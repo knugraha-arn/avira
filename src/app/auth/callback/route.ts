@@ -2,18 +2,24 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url)
+  const { searchParams } = new URL(request.url)
   const code  = searchParams.get('code')
-  const next  = searchParams.get('next') ?? '/dashboard'
+  const error = searchParams.get('error')
+
+  if (error) {
+    console.error('OAuth error:', error, searchParams.get('error_description'))
+    return NextResponse.redirect('https://avira.arranetwork.com/auth/login')
+  }
 
   if (code) {
     const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
-      return NextResponse.redirect(`${origin}${next}`)
+    const { data, error: sessionError } = await supabase.auth.exchangeCodeForSession(code)
+    console.log('session data:', data, 'error:', sessionError)
+    if (!sessionError) {
+      return NextResponse.redirect('https://avira.arranetwork.com/dashboard')
     }
+    console.error('Session error:', sessionError)
   }
 
-  // Auth failed — redirect to login with error
-  return NextResponse.redirect(`${origin}/auth/login?error=auth_failed`)
+  return NextResponse.redirect('https://avira.arranetwork.com/auth/login')
 }
