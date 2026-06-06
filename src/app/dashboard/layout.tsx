@@ -5,9 +5,11 @@ import type { AvrUserProfile } from '@/types'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { user }, error } = await supabase.auth.getUser()
 
-  if (!user) redirect('/auth/login')
+  if (error || !user) {
+    redirect('/auth/login')
+  }
 
   const { data: profile } = await supabase
     .from('avr_user_profiles')
@@ -15,9 +17,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .eq('id', user.id)
     .single()
 
-  if (!profile) redirect('/auth/login')
+  if (!profile) {
+    redirect('/auth/login')
+  }
 
-  // Unread notification count
   const { count: unreadCount } = await supabase
     .from('avr_notifications')
     .select('*', { count: 'exact', head: true })
