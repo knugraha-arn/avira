@@ -1,5 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
+// Supabase project ID for AVIRA — qlmtwssjcostyddiwszc
+const SUPABASE_PROJECT = 'qlmtwssjcostyddiwszc'
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -13,10 +16,11 @@ export function middleware(request: NextRequest) {
   }
 
   const isAuthPage = pathname.startsWith('/auth')
-  const cookies = request.cookies.getAll()
-  const hasSession = cookies.some(
-    c => c.name.startsWith('sb-') && c.name.endsWith('-auth-token')
-  )
+
+  // Check ONLY the AVIRA Supabase project cookie
+  const hasSession =
+    request.cookies.has(`sb-${SUPABASE_PROJECT}-auth-token`) ||
+    request.cookies.has(`sb-${SUPABASE_PROJECT}-auth-token.0`)
 
   if (!hasSession && !isAuthPage) {
     return NextResponse.redirect(new URL('/auth/login', request.url))
