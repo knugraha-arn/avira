@@ -1,26 +1,97 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import type { ResponseCookie } from 'next/dist/compiled/@edge-runtime/cookies'
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-export async function createClient() {
-  const cookieStore = await cookies()
+@layer base {
+  :root {
+    --brand-blue:       #0344D8;
+    --brand-blue-hover: #387EE4;
+    --brand-lime:       #D1EA2C;
+    --brand-amber:      #FFC128;
+    --brand-navy:       #1A1F2E;
+    --brand-gray:       #F8F9FB;
+  }
+  * { box-sizing: border-box; }
+  body {
+    @apply bg-brand-gray text-black font-sans antialiased;
+    font-size: 14px;
+  }
+  h1 { @apply text-2xl font-semibold tracking-tight text-brand-navy; }
+  h2 { @apply text-xl font-semibold tracking-tight text-brand-navy; }
+  h3 { @apply text-base font-semibold text-brand-navy; }
+}
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet: { name: string; value: string; options?: Partial<ResponseCookie> }[]) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            )
-          } catch {}
-        },
-      },
-    }
-  )
+@layer components {
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded bg-brand-blue px-4 py-2 text-sm font-medium text-white hover:bg-brand-blue-hover active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded border bg-white px-4 py-2 text-sm font-medium text-black hover:bg-brand-gray active:scale-95 transition-all disabled:opacity-50;
+    border-color: rgba(0,0,0,0.1);
+  }
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-medium transition-all;
+    color: rgba(0,0,0,0.6);
+  }
+  .btn-ghost:hover { background: rgba(0,0,0,0.05); }
+  .btn-danger {
+    @apply inline-flex items-center gap-2 rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 active:scale-95 transition-all disabled:opacity-50;
+  }
+  .card {
+    @apply bg-white rounded-lg p-5;
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+  }
+  .card-hover {
+    @apply bg-white rounded-lg p-5 cursor-pointer transition-shadow;
+    border: 1px solid rgba(0,0,0,0.06);
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.06);
+  }
+  .card-hover:hover {
+    box-shadow: 0 4px 12px 0 rgb(0 0 0 / 0.08);
+  }
+  .input {
+    @apply w-full rounded border bg-white px-3 py-2 text-sm text-black focus:outline-none focus:border-brand-blue transition-colors;
+    border-color: rgba(0,0,0,0.12);
+  }
+  .input:focus { box-shadow: 0 0 0 3px rgba(3,68,216,0.15); }
+  .input::placeholder { color: rgba(0,0,0,0.3); }
+  .input-error { border-color: #f87171; }
+  .label {
+    @apply block text-xs font-medium mb-1;
+    color: rgba(0,0,0,0.6);
+  }
+  .field-error { @apply mt-1 text-xs text-red-500; }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium border;
+  }
+  .table-base { @apply w-full text-sm border-collapse; }
+  .table-base th {
+    @apply text-left text-xs font-medium uppercase tracking-wide px-4 py-3;
+    color: rgba(0,0,0,0.4);
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+  }
+  .table-base td {
+    @apply px-4 py-3;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+  }
+  .table-base tr:last-child td { border-bottom: none; }
+  .table-base tbody tr { @apply transition-colors; }
+  .table-base tbody tr:hover { background: rgba(248,249,251,0.8); }
+  .nav-item {
+    @apply flex items-center gap-3 rounded px-3 py-2 text-sm font-medium transition-colors;
+    color: rgba(255,255,255,0.6);
+  }
+  .nav-item:hover {
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,1);
+  }
+  .nav-item-active {
+    background: rgba(255,255,255,0.12) !important;
+    color: rgba(255,255,255,1) !important;
+  }
+  .eyebrow {
+    @apply inline-block rounded px-2 py-0.5 text-xs font-semibold tracking-widest uppercase bg-brand-lime text-brand-navy;
+  }
 }
