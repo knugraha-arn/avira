@@ -22,7 +22,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `https://avira.arranetwork.com/auth/callback`,
         queryParams: {
           hd: 'arranetwork.com',
         },
