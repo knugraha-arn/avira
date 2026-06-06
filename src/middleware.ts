@@ -3,11 +3,14 @@ import { NextResponse, type NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isAuthPage = pathname.startsWith('/auth')
+  const isCallback = pathname === '/auth/callback'
 
-  // Check all possible Supabase session cookie names
+  // Skip middleware for callback — let it handle itself
+  if (isCallback) return NextResponse.next()
+
   const cookies = request.cookies.getAll()
   const hasSession = cookies.some(
-    c => c.name.includes('supabase') && c.name.includes('auth-token')
+    c => c.name.startsWith('sb-') && c.name.endsWith('-auth-token')
   )
 
   if (!hasSession && !isAuthPage) {
