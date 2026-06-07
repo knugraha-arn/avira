@@ -34,7 +34,7 @@ FORMAT JSON:
   }
 ]
 
-Hasilkan 6-8 risiko yang beragam dari sisi kategori dan tingkat keparahan. Pastikan ada minimal 1 Extreme, 2 High, 2-3 Medium, dan 1 Low.`
+Hasilkan 3 risiko yang beragam dari sisi kategori dan tingkat keparahan. Pastikan ada minimal 1 Extreme, 2 High, 2-3 Medium, dan 1 Low.`
 
 export async function POST(request: Request) {
   // Auth check
@@ -68,7 +68,7 @@ Identifikasi 6-8 risiko yang paling relevan dan spesifik berdasarkan konteks di 
     try {
       const response = await client.messages.create({
         model: 'claude-haiku-4-5',
-        max_tokens: 4096,
+        max_tokens: 8000,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],
         stream: true,
