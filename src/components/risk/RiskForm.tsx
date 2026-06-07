@@ -1,14 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { classificationBadge, LIKELIHOOD_LABELS, IMPACT_LABELS } from '@/lib/utils'
 import { RISK_FORM } from '@/lib/form-labels'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { ThirdPartySelect } from '@/components/risk/ThirdPartySelect'
-import { Info } from 'lucide-react'
+import { Info, Sparkles } from 'lucide-react'
 import type { AvrClassification } from '@/types'
 
 const CATEGORIES = [
@@ -37,12 +37,22 @@ interface Props {
 
 export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
   const router = useRouter()
-  const [loading, setLoading] = useState(false)
+  const searchParams = useSearchParams()
 
+  // Check if pre-filled from AI generator
+  const isAiGenerated = searchParams.get('ai_generated') === '1'
+  const aiJudul       = searchParams.get('ai_judul') ?? ''
+  const aiKategori    = searchParams.get('ai_kategori') ?? ''
+  const aiDeskripsi   = searchParams.get('ai_deskripsi') ?? ''
+  const aiLikelihood  = Number(searchParams.get('ai_likelihood') ?? 1)
+  const aiImpact      = Number(searchParams.get('ai_impact') ?? 1)
+  const aiTreatment   = searchParams.get('ai_treatment') ?? 'Mitigate'
+
+  const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
-    title:                '',
-    description:          '',
-    category:             '',
+    title:                aiJudul,
+    description:          aiDeskripsi,
+    category:             aiKategori,
     unit_kerja_id:        '',
     asset_terkait:        '',
     third_party_id:       '',
@@ -50,11 +60,11 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
     treatment_owner_id:   currentUserId,
     date_identified:      new Date().toISOString().split('T')[0],
     existing_control:     '',
-    likelihood:           1,
-    impact:               1,
+    likelihood:           aiLikelihood || 1,
+    impact:               aiImpact || 1,
     residual_likelihood:  '' as number | '',
     residual_impact:      '' as number | '',
-    treatment_strategy:   'Mitigate' as typeof TREATMENTS[number],
+    treatment_strategy:   (aiTreatment || 'Mitigate') as typeof TREATMENTS[number],
     treatment_notes:      '',
     review_frequency_days: 90,
   })
@@ -98,10 +108,7 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
       payload.residual_impact     = form.residual_impact
     }
     const { data, error } = await supabase
-      .from('avr_risks')
-      .insert(payload)
-      .select('id')
-      .single()
+      .from('avr_risks').insert(payload).select('id').single()
     if (error) {
       toast.error('Gagal menyimpan', { description: error.message })
       setLoading(false)
@@ -115,19 +122,28 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
 
-      {/* ── Step 1: Identitas ── */}
+      {/* AI banner */}
+      {isAiGenerated && (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-brand-blue/5 border border-brand-blue/20">
+          <Sparkles size={15} className="text-brand-blue shrink-0" />
+          <div className="text-xs text-brand-blue/80 leading-relaxed">
+            <strong>Diisi dari Risk Generator AI.</strong> Review dan sesuaikan seluruh field sebelum menyimpan.
+            Data ini akan tercatat sebagai <em>AI-assisted</em> dalam audit trail.
+          </div>
+        </div>
+      )}
+
+      {/* Step 1 */}
       <Section step="Step 1" title="Identitas Risiko">
         <div className="space-y-4">
           <Field label={RISK_FORM.title.label} tooltip={RISK_FORM.title.tooltip} required>
             <input className="input" placeholder={RISK_FORM.title.placeholder}
               value={form.title} onChange={e => set('title', e.target.value)} required />
           </Field>
-
           <Field label={RISK_FORM.description.label} tooltip={RISK_FORM.description.tooltip}>
             <textarea className="input min-h-[90px] resize-y" placeholder={RISK_FORM.description.placeholder}
               value={form.description} onChange={e => set('description', e.target.value)} />
           </Field>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label={RISK_FORM.category.label} tooltip={RISK_FORM.category.tooltip} required>
               <select className="input" value={form.category} onChange={e => set('category', e.target.value)} required>
@@ -135,7 +151,6 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
                 {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
-
             <Field label={RISK_FORM.unit_kerja.label} tooltip={RISK_FORM.unit_kerja.tooltip} required>
               <select className="input" value={form.unit_kerja_id} onChange={e => set('unit_kerja_id', e.target.value)} required>
                 <option value="">{RISK_FORM.unit_kerja.placeholder}</option>
@@ -145,27 +160,21 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
               </select>
             </Field>
           </div>
-
           <Field label={RISK_FORM.asset_terkait.label} tooltip={RISK_FORM.asset_terkait.tooltip}>
             <input className="input" placeholder={RISK_FORM.asset_terkait.placeholder}
               value={form.asset_terkait} onChange={e => set('asset_terkait', e.target.value)} />
           </Field>
-
           <Field label={RISK_FORM.third_party.label} tooltip={RISK_FORM.third_party.tooltip}>
-            <ThirdPartySelect
-              value={form.third_party_id}
+            <ThirdPartySelect value={form.third_party_id}
               onChange={(id) => set('third_party_id', id)}
-              placeholder={RISK_FORM.third_party.placeholder}
-            />
+              placeholder={RISK_FORM.third_party.placeholder} />
           </Field>
-
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Field label={RISK_FORM.date_identified.label} tooltip={RISK_FORM.date_identified.tooltip}>
-              <input type="date" className="input"
-                value={form.date_identified} onChange={e => set('date_identified', e.target.value)} />
+              <input type="date" className="input" value={form.date_identified}
+                onChange={e => set('date_identified', e.target.value)} />
             </Field>
           </div>
-
           <Field label={RISK_FORM.existing_control.label} tooltip={RISK_FORM.existing_control.tooltip}>
             <textarea className="input min-h-[100px] resize-y" placeholder={RISK_FORM.existing_control.placeholder}
               value={form.existing_control} onChange={e => set('existing_control', e.target.value)} />
@@ -173,31 +182,32 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
         </div>
       </Section>
 
-      {/* ── Step 2: Ownership ── */}
+      {/* Step 2 */}
       <Section step="Step 2" title="Ownership (RACI)">
         <InfoBox text={RISK_FORM.raci_note} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
           <Field label={RISK_FORM.risk_owner.label} tooltip={RISK_FORM.risk_owner.tooltip}>
             <select className="input" value={form.risk_owner_id} onChange={e => set('risk_owner_id', e.target.value)}>
               <option value="">{RISK_FORM.risk_owner.placeholder}</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.full_name}{u.job_title ? ` — ${u.job_title}` : ''}</option>
-              ))}
+              {users.map(u => <option key={u.id} value={u.id}>{u.full_name}{u.job_title ? ` — ${u.job_title}` : ''}</option>)}
             </select>
           </Field>
           <Field label={RISK_FORM.treatment_owner.label} tooltip={RISK_FORM.treatment_owner.tooltip}>
             <select className="input" value={form.treatment_owner_id} onChange={e => set('treatment_owner_id', e.target.value)}>
               <option value="">{RISK_FORM.treatment_owner.placeholder}</option>
-              {users.map(u => (
-                <option key={u.id} value={u.id}>{u.full_name}{u.job_title ? ` — ${u.job_title}` : ''}</option>
-              ))}
+              {users.map(u => <option key={u.id} value={u.id}>{u.full_name}{u.job_title ? ` — ${u.job_title}` : ''}</option>)}
             </select>
           </Field>
         </div>
       </Section>
 
-      {/* ── Step 3: Inherent Risk ── */}
+      {/* Step 3 */}
       <Section step="Step 3" title="Penilaian Risiko Inheren">
+        {isAiGenerated && (
+          <div className="flex items-center gap-2 mb-3 text-xs text-brand-blue/70">
+            <Sparkles size={12} /> Nilai awal diisi oleh AI — review dan sesuaikan
+          </div>
+        )}
         <p className="text-xs text-black/40 mb-4">{RISK_FORM.inherent_score_note}</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -235,8 +245,6 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
             </div>
           </div>
         </div>
-
-        {/* Score preview */}
         {inherentClass && (
           <div className="mt-4 p-4 rounded-lg bg-brand-gray flex items-center gap-4">
             <div>
@@ -255,7 +263,7 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
         )}
       </Section>
 
-      {/* ── Step 4: Residual Risk ── */}
+      {/* Step 4 */}
       <Section step="Step 4" title="Residual Risk (Opsional)">
         <InfoBox text={RISK_FORM.residual_note} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -293,7 +301,7 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
         )}
       </Section>
 
-      {/* ── Step 5: Treatment ── */}
+      {/* Step 5 */}
       <Section step="Step 5" title="Risk Treatment">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           {TREATMENTS.map(t => {
@@ -304,9 +312,7 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
                   onChange={() => set('treatment_strategy', t)} className="sr-only" />
                 <span className="text-2xl">{opt.icon}</span>
                 <span className="text-sm font-medium">{t}</span>
-                <span className="absolute top-1.5 right-1.5">
-                  <Tooltip text={opt.tooltip} />
-                </span>
+                <span className="absolute top-1.5 right-1.5"><Tooltip text={opt.tooltip} /></span>
               </label>
             )
           })}
@@ -317,7 +323,7 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
         </Field>
       </Section>
 
-      {/* ── Step 6: Review Cycle ── */}
+      {/* Step 6 */}
       <Section step="Step 6" title="Review Cycle">
         <div className="flex items-center gap-1 mb-3">
           <span className="label mb-0">{RISK_FORM.review_frequency.label}</span>
@@ -335,7 +341,6 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
         </div>
       </Section>
 
-      {/* Actions */}
       <div className="flex items-center gap-3 pt-2 pb-8">
         <button type="submit" className="btn-primary px-6" disabled={loading}>
           {loading ? 'Menyimpan...' : 'Simpan Risiko'}
@@ -347,7 +352,6 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
   )
 }
 
-// ── Helper components ──────────────────────────────────────
 function Section({ step, title, children }: { step: string; title: string; children: React.ReactNode }) {
   return (
     <div className="card">

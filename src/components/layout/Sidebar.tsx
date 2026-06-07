@@ -4,23 +4,25 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShieldAlert, ClipboardList,
-  Bell, Users, LogOut, ShieldCheck, Building2, Handshake,
+  Bell, Users, LogOut, ShieldCheck, Building2,
+  Handshake, Sparkles,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import type { AvrUserProfile } from '@/types'
 
 const NAV = [
-  { href: '/dashboard',     label: 'Dashboard',     icon: LayoutDashboard },
-  { href: '/risks',         label: 'Risk Register', icon: ShieldAlert },
-  { href: '/risks/reviews', label: 'Review',        icon: ClipboardList },
-  { href: '/notifications', label: 'Notifikasi',    icon: Bell },
+  { href: '/dashboard',       label: 'Dashboard',       icon: LayoutDashboard },
+  { href: '/risk-generator',  label: 'Risk Generator',  icon: Sparkles,  highlight: true },
+  { href: '/risks',           label: 'Risk Register',   icon: ShieldAlert },
+  { href: '/risks/reviews',   label: 'Review',          icon: ClipboardList },
+  { href: '/notifications',   label: 'Notifikasi',      icon: Bell },
 ]
 
 const ADMIN_NAV = [
-  { href: '/admin/unit-kerja',  label: 'Unit Kerja',  icon: Building2 },
-  { href: '/admin/pihak-lain',  label: 'Pihak Lain',  icon: Handshake },
-  { href: '/users',             label: 'Pengguna',    icon: Users },
+  { href: '/admin/unit-kerja', label: 'Unit Kerja', icon: Building2 },
+  { href: '/admin/pihak-lain', label: 'Pihak Lain', icon: Handshake },
+  { href: '/users',            label: 'Pengguna',   icon: Users },
 ]
 
 interface Props {
@@ -58,11 +60,20 @@ export function Sidebar({ profile, unreadCount = 0 }: Props) {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {NAV.map(item => {
-          const active = pathname === item.href || (item.href !== '/risks' && pathname.startsWith(item.href + '/')) || (item.href === '/risks' && pathname === '/risks')
+          const active = pathname === item.href ||
+            (item.href !== '/risks' && pathname.startsWith(item.href + '/')) ||
+            (item.href === '/risks' && pathname === '/risks')
+
           return (
-            <Link key={item.href} href={item.href} className={cn('nav-item', active && 'nav-item-active')}>
+            <Link key={item.href} href={item.href}
+              className={cn('nav-item', active && 'nav-item-active')}>
               <item.icon size={15} />
               <span>{item.label}</span>
+              {'highlight' in item && item.highlight && !active && (
+                <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded bg-brand-lime text-brand-navy leading-none">
+                  AI
+                </span>
+              )}
               {item.href === '/notifications' && unreadCount > 0 && (
                 <span className="ml-auto bg-brand-lime text-brand-navy text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
                   {unreadCount > 9 ? '9+' : unreadCount}
@@ -80,7 +91,8 @@ export function Sidebar({ profile, unreadCount = 0 }: Props) {
             {ADMIN_NAV.map(item => {
               const active = pathname.startsWith(item.href)
               return (
-                <Link key={item.href} href={item.href} className={cn('nav-item', active && 'nav-item-active')}>
+                <Link key={item.href} href={item.href}
+                  className={cn('nav-item', active && 'nav-item-active')}>
                   <item.icon size={15} />
                   <span>{item.label}</span>
                 </Link>
