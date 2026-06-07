@@ -4,30 +4,20 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import { LIKELIHOOD_LABELS, IMPACT_LABELS, classificationBadge } from '@/lib/utils'
+import { classificationBadge, LIKELIHOOD_LABELS, IMPACT_LABELS } from '@/lib/utils'
+import { RISK_FORM } from '@/lib/form-labels'
+import { Tooltip } from '@/components/ui/Tooltip'
+import { ThirdPartySelect } from '@/components/risk/ThirdPartySelect'
+import { Info } from 'lucide-react'
 import type { AvrClassification } from '@/types'
 
 const CATEGORIES = [
-  'Strategic', 'Operational', 'Financial', 'Compliance',
-  'Technology', 'Human Resources', 'Reputational', 'Other',
+  'Strategic','Operational','Financial','Compliance',
+  'Technology','Human Resources','Reputational','Other',
 ]
+const TREATMENTS = ['Mitigate','Accept','Transfer','Avoid'] as const
+const FREQ_OPTIONS = [30, 90, 180, 365] as const
 
-const TREATMENTS = ['Mitigate', 'Accept', 'Transfer', 'Avoid']
-const FREQUENCIES = [
-  { label: 'Bulanan (30 hari)',    value: 30 },
-  { label: 'Triwulan (90 hari)',   value: 90 },
-  { label: 'Semesteran (180 hari)', value: 180 },
-  { label: 'Tahunan (365 hari)',   value: 365 },
-]
-
-interface User { id: string; full_name: string; department: string | null }
-
-interface Props {
-  users: User[]
-  currentUserId: string
-}
-
-// Risk matrix classification (same as DB)
 const MATRIX: Record<string, AvrClassification> = {
   '1-1':'Low','1-2':'Low','1-3':'Low','1-4':'Medium','1-5':'Medium',
   '2-1':'Low','2-2':'Low','2-3':'Medium','2-4':'Medium','2-5':'High',
@@ -36,34 +26,42 @@ const MATRIX: Record<string, AvrClassification> = {
   '5-1':'Medium','5-2':'High','5-3':'High','5-4':'Extreme','5-5':'Extreme',
 }
 
-export function RiskForm({ users, currentUserId }: Props) {
+interface UnitKerja { id: string; kode: string; nama: string }
+interface User { id: string; full_name: string; job_title: string | null }
+
+interface Props {
+  unitKerjaList: UnitKerja[]
+  users: User[]
+  currentUserId: string
+}
+
+export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
   const [form, setForm] = useState({
-    title: '',
-    description: '',
-    category: '',
-    department: '',
-    related_asset: '',
-    related_vendor: '',
-    risk_owner_id: currentUserId,
-    treatment_owner_id: currentUserId,
-    date_identified: new Date().toISOString().split('T')[0],
-    existing_control: '',
-    likelihood: 1,
-    impact: 1,
-    residual_likelihood: '' as number | '',
-    residual_impact: '' as number | '',
-    treatment_strategy: 'Mitigate',
-    treatment_notes: '',
+    title:                '',
+    description:          '',
+    category:             '',
+    unit_kerja_id:        '',
+    asset_terkait:        '',
+    third_party_id:       '',
+    risk_owner_id:        currentUserId,
+    treatment_owner_id:   currentUserId,
+    date_identified:      new Date().toISOString().split('T')[0],
+    existing_control:     '',
+    likelihood:           1,
+    impact:               1,
+    residual_likelihood:  '' as number | '',
+    residual_impact:      '' as number | '',
+    treatment_strategy:   'Mitigate' as typeof TREATMENTS[number],
+    treatment_notes:      '',
     review_frequency_days: 90,
   })
 
   const inherentClass = MATRIX[`${form.likelihood}-${form.impact}`]
   const residualClass = form.residual_likelihood && form.residual_impact
-    ? MATRIX[`${form.residual_likelihood}-${form.residual_impact}`]
-    : null
+    ? MATRIX[`${form.residual_likelihood}-${form.residual_impact}`] : null
 
   function set(field: string, value: unknown) {
     setForm(f => ({ ...f, [field]: value }))
@@ -71,20 +69,19 @@ export function RiskForm({ users, currentUserId }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.title || !form.category || !form.department) {
+    if (!form.title || !form.category || !form.unit_kerja_id) {
       toast.error('Lengkapi field yang wajib diisi')
       return
     }
     setLoading(true)
     const supabase = createClient()
-
     const payload: Record<string, unknown> = {
       title:                form.title,
       description:          form.description || null,
       category:             form.category,
-      department:           form.department,
-      related_asset:        form.related_asset || null,
-      related_vendor:       form.related_vendor || null,
+      unit_kerja_id:        form.unit_kerja_id,
+      asset_terkait:        form.asset_terkait || null,
+      third_party_id:       form.third_party_id || null,
       risk_owner_id:        form.risk_owner_id || null,
       treatment_owner_id:   form.treatment_owner_id || null,
       date_identified:      form.date_identified,
@@ -96,114 +93,143 @@ export function RiskForm({ users, currentUserId }: Props) {
       review_frequency_days: form.review_frequency_days,
       created_by:           currentUserId,
     }
-
     if (form.residual_likelihood && form.residual_impact) {
       payload.residual_likelihood = form.residual_likelihood
       payload.residual_impact     = form.residual_impact
     }
-
     const { data, error } = await supabase
       .from('avr_risks')
       .insert(payload)
       .select('id')
       .single()
-
     if (error) {
       toast.error('Gagal menyimpan', { description: error.message })
       setLoading(false)
       return
     }
-
     toast.success('Risiko berhasil ditambahkan')
     router.push(`/risks/${data.id}`)
     router.refresh()
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
+    <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
 
-      {/* ── Identitas Risiko ── */}
-      <Section title="Identitas Risiko" eyebrow="Step 1">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="md:col-span-2">
-            <label className="label">Judul Risiko <Required /></label>
-            <input className="input" placeholder="Contoh: Kebocoran data pelanggan via API" value={form.title} onChange={e => set('title', e.target.value)} required />
+      {/* ── Step 1: Identitas ── */}
+      <Section step="Step 1" title="Identitas Risiko">
+        <div className="space-y-4">
+          <Field label={RISK_FORM.title.label} tooltip={RISK_FORM.title.tooltip} required>
+            <input className="input" placeholder={RISK_FORM.title.placeholder}
+              value={form.title} onChange={e => set('title', e.target.value)} required />
+          </Field>
+
+          <Field label={RISK_FORM.description.label} tooltip={RISK_FORM.description.tooltip}>
+            <textarea className="input min-h-[90px] resize-y" placeholder={RISK_FORM.description.placeholder}
+              value={form.description} onChange={e => set('description', e.target.value)} />
+          </Field>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label={RISK_FORM.category.label} tooltip={RISK_FORM.category.tooltip} required>
+              <select className="input" value={form.category} onChange={e => set('category', e.target.value)} required>
+                <option value="">{RISK_FORM.category.placeholder}</option>
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+
+            <Field label={RISK_FORM.unit_kerja.label} tooltip={RISK_FORM.unit_kerja.tooltip} required>
+              <select className="input" value={form.unit_kerja_id} onChange={e => set('unit_kerja_id', e.target.value)} required>
+                <option value="">{RISK_FORM.unit_kerja.placeholder}</option>
+                {unitKerjaList.map(uk => (
+                  <option key={uk.id} value={uk.id}>{uk.nama} ({uk.kode})</option>
+                ))}
+              </select>
+            </Field>
           </div>
-          <div className="md:col-span-2">
-            <label className="label">Deskripsi Risiko</label>
-            <textarea className="input min-h-[80px] resize-none" placeholder="Jelaskan risiko secara detail..." value={form.description} onChange={e => set('description', e.target.value)} />
+
+          <Field label={RISK_FORM.asset_terkait.label} tooltip={RISK_FORM.asset_terkait.tooltip}>
+            <input className="input" placeholder={RISK_FORM.asset_terkait.placeholder}
+              value={form.asset_terkait} onChange={e => set('asset_terkait', e.target.value)} />
+          </Field>
+
+          <Field label={RISK_FORM.third_party.label} tooltip={RISK_FORM.third_party.tooltip}>
+            <ThirdPartySelect
+              value={form.third_party_id}
+              onChange={(id) => set('third_party_id', id)}
+              placeholder={RISK_FORM.third_party.placeholder}
+            />
+          </Field>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field label={RISK_FORM.date_identified.label} tooltip={RISK_FORM.date_identified.tooltip}>
+              <input type="date" className="input"
+                value={form.date_identified} onChange={e => set('date_identified', e.target.value)} />
+            </Field>
           </div>
-          <div>
-            <label className="label">Kategori <Required /></label>
-            <select className="input" value={form.category} onChange={e => set('category', e.target.value)} required>
-              <option value="">Pilih kategori</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label">Departemen <Required /></label>
-            <input className="input" placeholder="Contoh: IT, Finance, Operations" value={form.department} onChange={e => set('department', e.target.value)} required />
-          </div>
-          <div>
-            <label className="label">Aset Terkait</label>
-            <input className="input" placeholder="Contoh: Database pelanggan, Server produksi" value={form.related_asset} onChange={e => set('related_asset', e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Vendor Terkait</label>
-            <input className="input" placeholder="Contoh: AWS, Midtrans" value={form.related_vendor} onChange={e => set('related_vendor', e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Tanggal Identifikasi</label>
-            <input type="date" className="input" value={form.date_identified} onChange={e => set('date_identified', e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Kontrol yang Sudah Ada</label>
-            <input className="input" placeholder="Kontrol existing sebelum mitigasi" value={form.existing_control} onChange={e => set('existing_control', e.target.value)} />
-          </div>
+
+          <Field label={RISK_FORM.existing_control.label} tooltip={RISK_FORM.existing_control.tooltip}>
+            <textarea className="input min-h-[100px] resize-y" placeholder={RISK_FORM.existing_control.placeholder}
+              value={form.existing_control} onChange={e => set('existing_control', e.target.value)} />
+          </Field>
         </div>
       </Section>
 
-      {/* ── Ownership ── */}
-      <Section title="Ownership" eyebrow="Step 2">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Risk Owner</label>
+      {/* ── Step 2: Ownership ── */}
+      <Section step="Step 2" title="Ownership (RACI)">
+        <InfoBox text={RISK_FORM.raci_note} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <Field label={RISK_FORM.risk_owner.label} tooltip={RISK_FORM.risk_owner.tooltip}>
             <select className="input" value={form.risk_owner_id} onChange={e => set('risk_owner_id', e.target.value)}>
-              <option value="">Pilih Risk Owner</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.full_name}{u.department ? ` — ${u.department}` : ''}</option>)}
+              <option value="">{RISK_FORM.risk_owner.placeholder}</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.full_name}{u.job_title ? ` — ${u.job_title}` : ''}</option>
+              ))}
             </select>
-          </div>
-          <div>
-            <label className="label">Treatment Owner</label>
+          </Field>
+          <Field label={RISK_FORM.treatment_owner.label} tooltip={RISK_FORM.treatment_owner.tooltip}>
             <select className="input" value={form.treatment_owner_id} onChange={e => set('treatment_owner_id', e.target.value)}>
-              <option value="">Pilih Treatment Owner</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.full_name}{u.department ? ` — ${u.department}` : ''}</option>)}
+              <option value="">{RISK_FORM.treatment_owner.placeholder}</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.full_name}{u.job_title ? ` — ${u.job_title}` : ''}</option>
+              ))}
             </select>
-          </div>
+          </Field>
         </div>
       </Section>
 
-      {/* ── Penilaian Risiko ── */}
-      <Section title="Penilaian Risiko Inheren" eyebrow="Step 3">
+      {/* ── Step 3: Inherent Risk ── */}
+      <Section step="Step 3" title="Penilaian Risiko Inheren">
+        <p className="text-xs text-black/40 mb-4">{RISK_FORM.inherent_score_note}</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="label">Likelihood (Kemungkinan)</label>
-            <div className="space-y-2 mt-1">
-              {[1,2,3,4,5].map(v => (
-                <label key={v} className={`flex items-center gap-3 p-2.5 rounded border cursor-pointer transition-colors ${form.likelihood === v ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
-                  <input type="radio" name="likelihood" value={v} checked={form.likelihood === v} onChange={() => set('likelihood', v)} className="accent-brand-blue" />
-                  <span className="text-sm"><span className="font-medium">{v}</span> — {LIKELIHOOD_LABELS[v]}</span>
+            <div className="flex items-center gap-1 mb-2">
+              <span className="label mb-0">{RISK_FORM.likelihood.label}</span>
+              <Tooltip text={RISK_FORM.likelihood.tooltip} />
+            </div>
+            <div className="space-y-1.5">
+              {([1,2,3,4,5] as const).map(v => (
+                <label key={v} className={`flex items-start gap-3 p-2.5 rounded border cursor-pointer transition-colors ${form.likelihood === v ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
+                  <input type="radio" name="likelihood" value={v} checked={form.likelihood === v}
+                    onChange={() => set('likelihood', v)} className="accent-brand-blue mt-0.5 shrink-0" />
+                  <span className="text-sm leading-snug">
+                    <span className="font-semibold">{v}</span> — {RISK_FORM.likelihood.scale[v]}
+                  </span>
                 </label>
               ))}
             </div>
           </div>
           <div>
-            <label className="label">Impact (Dampak)</label>
-            <div className="space-y-2 mt-1">
-              {[1,2,3,4,5].map(v => (
-                <label key={v} className={`flex items-center gap-3 p-2.5 rounded border cursor-pointer transition-colors ${form.impact === v ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
-                  <input type="radio" name="impact" value={v} checked={form.impact === v} onChange={() => set('impact', v)} className="accent-brand-blue" />
-                  <span className="text-sm"><span className="font-medium">{v}</span> — {IMPACT_LABELS[v]}</span>
+            <div className="flex items-center gap-1 mb-2">
+              <span className="label mb-0">{RISK_FORM.impact.label}</span>
+              <Tooltip text={RISK_FORM.impact.tooltip} />
+            </div>
+            <div className="space-y-1.5">
+              {([1,2,3,4,5] as const).map(v => (
+                <label key={v} className={`flex items-start gap-3 p-2.5 rounded border cursor-pointer transition-colors ${form.impact === v ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
+                  <input type="radio" name="impact" value={v} checked={form.impact === v}
+                    onChange={() => set('impact', v)} className="accent-brand-blue mt-0.5 shrink-0" />
+                  <span className="text-sm leading-snug">
+                    <span className="font-semibold">{v}</span> — {RISK_FORM.impact.scale[v]}
+                  </span>
                 </label>
               ))}
             </div>
@@ -211,48 +237,50 @@ export function RiskForm({ users, currentUserId }: Props) {
         </div>
 
         {/* Score preview */}
-        <div className="mt-4 p-4 rounded-lg bg-brand-gray flex items-center gap-4">
-          <div>
-            <p className="text-xs text-black/40 mb-1">Inherent Risk Score</p>
-            <p className="text-3xl font-bold text-brand-navy">{form.likelihood * form.impact}</p>
-            <p className="text-xs text-black/40">L{form.likelihood} × I{form.impact}</p>
-          </div>
-          <div className="w-px h-12 bg-black/10" />
-          <div>
-            <p className="text-xs text-black/40 mb-1">Klasifikasi</p>
-            {inherentClass && (
-              <span className={`badge ${classificationBadge(inherentClass).bg} ${classificationBadge(inherentClass).text} ${classificationBadge(inherentClass).border} text-sm px-3 py-1`}>
+        {inherentClass && (
+          <div className="mt-4 p-4 rounded-lg bg-brand-gray flex items-center gap-4">
+            <div>
+              <p className="text-xs text-black/40 mb-1">Inherent Risk Score</p>
+              <p className="text-3xl font-bold text-brand-navy">{form.likelihood * form.impact}</p>
+              <p className="text-xs text-black/30 mt-0.5">L{form.likelihood} × I{form.impact}</p>
+            </div>
+            <div className="w-px h-12 bg-black/10" />
+            <div>
+              <p className="text-xs text-black/40 mb-1">Klasifikasi</p>
+              <span className={`badge text-sm px-3 py-1 ${classificationBadge(inherentClass).bg} ${classificationBadge(inherentClass).text} ${classificationBadge(inherentClass).border}`}>
                 {inherentClass}
               </span>
-            )}
+            </div>
           </div>
-        </div>
+        )}
       </Section>
 
-      {/* ── Residual Risk ── */}
-      <Section title="Residual Risk (Opsional)" eyebrow="Step 4">
-        <p className="text-sm text-black/40 mb-4">Isi jika kontrol sudah diterapkan dan Anda ingin mencatat skor risiko residual.</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="label">Residual Likelihood</label>
-            <select className="input" value={form.residual_likelihood} onChange={e => set('residual_likelihood', e.target.value ? Number(e.target.value) : '')}>
-              <option value="">— Tidak diisi —</option>
+      {/* ── Step 4: Residual Risk ── */}
+      <Section step="Step 4" title="Residual Risk (Opsional)">
+        <InfoBox text={RISK_FORM.residual_note} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <Field label={RISK_FORM.residual_likelihood.label} tooltip={RISK_FORM.residual_likelihood.tooltip}>
+            <select className="input" value={form.residual_likelihood}
+              onChange={e => set('residual_likelihood', e.target.value ? Number(e.target.value) : '')}>
+              <option value="">{RISK_FORM.residual_likelihood.placeholder}</option>
               {[1,2,3,4,5].map(v => <option key={v} value={v}>{v} — {LIKELIHOOD_LABELS[v]}</option>)}
             </select>
-          </div>
-          <div>
-            <label className="label">Residual Impact</label>
-            <select className="input" value={form.residual_impact} onChange={e => set('residual_impact', e.target.value ? Number(e.target.value) : '')}>
-              <option value="">— Tidak diisi —</option>
+          </Field>
+          <Field label={RISK_FORM.residual_impact.label} tooltip={RISK_FORM.residual_impact.tooltip}>
+            <select className="input" value={form.residual_impact}
+              onChange={e => set('residual_impact', e.target.value ? Number(e.target.value) : '')}>
+              <option value="">{RISK_FORM.residual_impact.placeholder}</option>
               {[1,2,3,4,5].map(v => <option key={v} value={v}>{v} — {IMPACT_LABELS[v]}</option>)}
             </select>
-          </div>
+          </Field>
         </div>
         {residualClass && (
           <div className="mt-3 p-3 rounded-lg bg-brand-gray flex items-center gap-4">
             <div>
               <p className="text-xs text-black/40 mb-1">Residual Score</p>
-              <p className="text-2xl font-bold text-brand-navy">{Number(form.residual_likelihood) * Number(form.residual_impact)}</p>
+              <p className="text-2xl font-bold text-brand-navy">
+                {Number(form.residual_likelihood) * Number(form.residual_impact)}
+              </p>
             </div>
             <div className="w-px h-10 bg-black/10" />
             <div>
@@ -265,71 +293,93 @@ export function RiskForm({ users, currentUserId }: Props) {
         )}
       </Section>
 
-      {/* ── Treatment ── */}
-      <Section title="Risk Treatment" eyebrow="Step 5">
+      {/* ── Step 5: Treatment ── */}
+      <Section step="Step 5" title="Risk Treatment">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          {TREATMENTS.map(t => (
-            <label key={t} className={`flex flex-col items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors text-center ${form.treatment_strategy === t ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
-              <input type="radio" name="treatment" value={t} checked={form.treatment_strategy === t} onChange={() => set('treatment_strategy', t)} className="sr-only" />
-              <TreatmentIcon type={t} />
-              <span className="text-sm font-medium">{t}</span>
+          {TREATMENTS.map(t => {
+            const opt = RISK_FORM.treatment_options[t]
+            return (
+              <label key={t} className={`relative flex flex-col items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors text-center ${form.treatment_strategy === t ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
+                <input type="radio" name="treatment" value={t} checked={form.treatment_strategy === t}
+                  onChange={() => set('treatment_strategy', t)} className="sr-only" />
+                <span className="text-2xl">{opt.icon}</span>
+                <span className="text-sm font-medium">{t}</span>
+                <span className="absolute top-1.5 right-1.5">
+                  <Tooltip text={opt.tooltip} />
+                </span>
+              </label>
+            )
+          })}
+        </div>
+        <Field label={RISK_FORM.treatment_notes.label} tooltip={RISK_FORM.treatment_notes.tooltip}>
+          <textarea className="input min-h-[80px] resize-y" placeholder={RISK_FORM.treatment_notes.placeholder}
+            value={form.treatment_notes} onChange={e => set('treatment_notes', e.target.value)} />
+        </Field>
+      </Section>
+
+      {/* ── Step 6: Review Cycle ── */}
+      <Section step="Step 6" title="Review Cycle">
+        <div className="flex items-center gap-1 mb-3">
+          <span className="label mb-0">{RISK_FORM.review_frequency.label}</span>
+          <Tooltip text={RISK_FORM.review_frequency.tooltip} />
+        </div>
+        <p className="text-xs text-black/40 mb-3">{RISK_FORM.review_frequency.guide}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {FREQ_OPTIONS.map(f => (
+            <label key={f} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${form.review_frequency_days === f ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
+              <input type="radio" name="frequency" value={f} checked={form.review_frequency_days === f}
+                onChange={() => set('review_frequency_days', f)} className="accent-brand-blue" />
+              <span className="text-sm">{RISK_FORM.review_frequency.options[f]}</span>
             </label>
           ))}
         </div>
-        <div>
-          <label className="label">Catatan Treatment</label>
-          <textarea className="input min-h-[70px] resize-none" placeholder="Jelaskan rencana penanganan risiko..." value={form.treatment_notes} onChange={e => set('treatment_notes', e.target.value)} />
-        </div>
       </Section>
 
-      {/* ── Review Cycle ── */}
-      <Section title="Review Cycle" eyebrow="Step 6">
-        <div>
-          <label className="label">Frekuensi Review</label>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {FREQUENCIES.map(f => (
-              <label key={f.value} className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${form.review_frequency_days === f.value ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
-                <input type="radio" name="frequency" value={f.value} checked={form.review_frequency_days === f.value} onChange={() => set('review_frequency_days', f.value)} className="accent-brand-blue" />
-                <span className="text-sm">{f.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-      </Section>
-
-      {/* ── Actions ── */}
+      {/* Actions */}
       <div className="flex items-center gap-3 pt-2 pb-8">
         <button type="submit" className="btn-primary px-6" disabled={loading}>
           {loading ? 'Menyimpan...' : 'Simpan Risiko'}
         </button>
-        <button type="button" className="btn-secondary" onClick={() => router.back()}>
-          Batal
-        </button>
+        <button type="button" className="btn-secondary" onClick={() => router.back()}>Batal</button>
       </div>
 
     </form>
   )
 }
 
-function Section({ title, eyebrow, children }: { title: string; eyebrow: string; children: React.ReactNode }) {
+// ── Helper components ──────────────────────────────────────
+function Section({ step, title, children }: { step: string; title: string; children: React.ReactNode }) {
   return (
     <div className="card">
       <div className="mb-4">
-        <span className="eyebrow text-[10px] mb-1 inline-block">{eyebrow}</span>
-        <h3 className="text-base font-semibold text-brand-navy">{title}</h3>
+        <span className="eyebrow text-[10px] mb-1 inline-block">{step}</span>
+        <h3>{title}</h3>
       </div>
       {children}
     </div>
   )
 }
 
-function Required() {
-  return <span className="text-red-400 ml-0.5">*</span>
+function Field({ label, tooltip, required, children }: {
+  label: string; tooltip?: string; required?: boolean; children: React.ReactNode
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-0.5 mb-1">
+        <label className="label mb-0">{label}</label>
+        {required && <span className="text-red-400 text-xs ml-0.5">*</span>}
+        {tooltip && <Tooltip text={tooltip} />}
+      </div>
+      {children}
+    </div>
+  )
 }
 
-function TreatmentIcon({ type }: { type: string }) {
-  const icons: Record<string, string> = {
-    Mitigate: '🛡️', Accept: '✅', Transfer: '🤝', Avoid: '🚫',
-  }
-  return <span className="text-2xl">{icons[type]}</span>
+function InfoBox({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-2 p-3 rounded-lg bg-brand-gray border border-black/5">
+      <Info size={14} className="text-brand-blue shrink-0 mt-0.5" />
+      <p className="text-xs text-black/60 leading-relaxed">{text}</p>
+    </div>
+  )
 }

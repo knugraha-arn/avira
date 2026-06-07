@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShieldAlert, ClipboardList,
-  Bell, Users, LogOut, ShieldCheck,
+  Bell, Users, LogOut, ShieldCheck, Building2, Handshake,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -18,7 +18,9 @@ const NAV = [
 ]
 
 const ADMIN_NAV = [
-  { href: '/users', label: 'Pengguna', icon: Users },
+  { href: '/admin/unit-kerja',  label: 'Unit Kerja',  icon: Building2 },
+  { href: '/admin/pihak-lain',  label: 'Pihak Lain',  icon: Handshake },
+  { href: '/users',             label: 'Pengguna',    icon: Users },
 ]
 
 interface Props {
@@ -56,13 +58,9 @@ export function Sidebar({ profile, unreadCount = 0 }: Props) {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {NAV.map(item => {
-          const active = pathname === item.href || pathname.startsWith(item.href + '/')
+          const active = pathname === item.href || (item.href !== '/risks' && pathname.startsWith(item.href + '/')) || (item.href === '/risks' && pathname === '/risks')
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn('nav-item', active && 'nav-item-active')}
-            >
+            <Link key={item.href} href={item.href} className={cn('nav-item', active && 'nav-item-active')}>
               <item.icon size={15} />
               <span>{item.label}</span>
               {item.href === '/notifications' && unreadCount > 0 && (

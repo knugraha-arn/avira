@@ -21,18 +21,16 @@ export default async function NewRiskPage() {
     redirect('/risks')
   }
 
-  const { data: users } = await supabase
-    .from('avr_user_profiles')
-    .select('id, full_name, department')
-    .eq('is_active', true)
-    .order('full_name')
+  const [{ data: unitKerjaList }, { data: users }] = await Promise.all([
+    supabase.from('avr_unit_kerja').select('id, kode, nama').eq('is_active', true).order('nama'),
+    supabase.from('avr_user_profiles').select('id, full_name, job_title').eq('is_active', true).order('full_name'),
+  ])
 
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/risks" className="btn-ghost px-0 mb-3 text-black/40 hover:text-black">
-          <ArrowLeft size={14} />
-          Kembali ke Risk Register
+        <Link href="/risks" className="inline-flex items-center gap-1.5 text-xs text-black/40 hover:text-black mb-3 transition-colors">
+          <ArrowLeft size={13} /> Kembali ke Risk Register
         </Link>
         <span className="eyebrow">Risk Register</span>
         <h1 className="mt-1">Tambah Risiko Baru</h1>
@@ -40,6 +38,7 @@ export default async function NewRiskPage() {
       </div>
 
       <RiskForm
+        unitKerjaList={unitKerjaList ?? []}
         users={users ?? []}
         currentUserId={user.id}
       />
