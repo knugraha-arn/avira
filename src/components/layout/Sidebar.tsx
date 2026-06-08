@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShieldAlert, ClipboardList,
   Bell, Users, LogOut, ShieldCheck, Building2,
@@ -12,11 +12,11 @@ import { createClient } from '@/lib/supabase/client'
 import type { AvrUserProfile } from '@/types'
 
 const NAV = [
-  { href: '/dashboard',       label: 'Dashboard',       icon: LayoutDashboard },
-  { href: '/risk-generator',  label: 'Risk Generator',  icon: Sparkles,  highlight: true },
-  { href: '/risks',           label: 'Risk Register',   icon: ShieldAlert },
-  { href: '/risks?filter=review_due', label: 'Review',  icon: ClipboardList },
-  { href: '/notifications',   label: 'Notifikasi',      icon: Bell },
+  { href: '/dashboard',               label: 'Dashboard',      icon: LayoutDashboard },
+  { href: '/risk-generator',          label: 'Risk Generator', icon: Sparkles, highlight: true },
+  { href: '/risks',                   label: 'Risk Register',  icon: ShieldAlert },
+  { href: '/risks?filter=review_due', label: 'Review',         icon: ClipboardList },
+  { href: '/notifications',           label: 'Notifikasi',     icon: Bell },
 ]
 
 const ADMIN_NAV = [
@@ -31,8 +31,37 @@ interface Props {
 }
 
 export function Sidebar({ profile, unreadCount = 0 }: Props) {
-  const pathname = usePathname()
-  const router   = useRouter()
+  const pathname     = usePathname()
+  const searchParams = useSearchParams()
+  const router       = useRouter()
+
+  function isActive(href: string): boolean {
+    const [hrefPath, hrefQuery] = href.split('?')
+    
+    // Exact path match required first
+    if (pathname !== hrefPath) {
+      // Allow sub-paths only for non-risks routes
+      if (hrefPath !== '/risks' && pathname.startsWith(hrefPath + '/')) return true
+      return false
+    }
+
+    // Same path — differentiate by query params
+    if (hrefQuery) {
+      // This nav item has query params — only active if current URL has same params
+      const params = new URLSearchParams(hrefQuery)
+      for (const [key, val] of params.entries()) {
+        if (searchParams.get(key) !== val) return false
+      }
+      return true
+    } else {
+      // This nav item has NO query params — only active if current URL also has no relevant filter
+      // Exception: sub-paths like /risks/[id] should still highlight Risk Register
+      if (hrefPath === '/risks') {
+        return !searchParams.has('filter')
+      }
+      return true
+    }
+  }
 
   async function handleLogout() {
     const supabase = createClient()
@@ -60,10 +89,7 @@ export function Sidebar({ profile, unreadCount = 0 }: Props) {
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {NAV.map(item => {
-          const active = pathname === item.href ||
-            (item.href !== '/risks' && pathname.startsWith(item.href + '/')) ||
-            (item.href === '/risks' && pathname === '/risks')
-
+          const active = isActive(item.href)
           return (
             <Link key={item.href} href={item.href}
               className={cn('nav-item', active && 'nav-item-active')}>
