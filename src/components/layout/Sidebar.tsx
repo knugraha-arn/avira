@@ -15,7 +15,7 @@ const NAV = [
   { href: '/dashboard',       label: 'Dashboard',       icon: LayoutDashboard },
   { href: '/risk-generator',  label: 'Risk Generator',  icon: Sparkles,  highlight: true },
   { href: '/risks',           label: 'Risk Register',   icon: ShieldAlert },
-  { href: '/risks/reviews',   label: 'Review',          icon: ClipboardList },
+  { href: '/risks?filter=review_due', label: 'Review',  icon: ClipboardList },
   { href: '/notifications',   label: 'Notifikasi',      icon: Bell },
 ]
 
