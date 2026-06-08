@@ -3,24 +3,21 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Calendar, User, Building2,
-  Shield, Clock, Flag, AlertTriangle, CheckCircle,
+  Shield, Clock, Flag, CheckCircle, AlertCircle,
+  Pencil, XCircle,
 } from 'lucide-react'
 import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatDate } from '@/lib/utils'
-import { LIKELIHOOD_LABELS, IMPACT_LABELS } from '@/lib/utils'
+import { formatDate, LIKELIHOOD_LABELS, IMPACT_LABELS } from '@/lib/utils'
 import { MitigationSection } from './MitigationSection'
 
 export const dynamic = 'force-dynamic'
 
-interface Props {
-  params: Promise<{ id: string }>
-}
+interface Props { params: Promise<{ id: string }> }
 
 export default async function RiskDetailPage({ params }: Props) {
   const { id } = await params
   const supabase = await createClient()
-
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
 
@@ -33,41 +30,45 @@ export default async function RiskDetailPage({ params }: Props) {
       unit_kerja:avr_unit_kerja(id, kode, nama),
       third_party:avr_third_parties(id, nama, tipe)
     `)
-    .eq('id', id)
-    .single()
-
+    .eq('id', id).single()
   if (!risk) notFound()
 
-  const [{ data: mitigationLogs }, { data: reviews }, { data: auditLogs }] = await Promise.all([
+  const [
+    { data: mitigationLogs },
+    { data: reviews },
+    { data: auditLogs },
+    { data: profile },
+    { data: pendingClosure },
+  ] = await Promise.all([
     supabase.from('avr_mitigation_logs')
       .select('*, updater:avr_user_profiles(full_name)')
-      .eq('risk_id', id)
-      .order('update_date', { ascending: false }),
+      .eq('risk_id', id).order('update_date', { ascending: false }),
     supabase.from('avr_risk_reviews')
       .select('*, reviewer:avr_user_profiles(full_name)')
-      .eq('risk_id', id)
-      .order('review_date', { ascending: false }),
+      .eq('risk_id', id).order('review_date', { ascending: false }),
     supabase.from('avr_audit_logs')
       .select('*, actor:avr_user_profiles(full_name)')
-      .eq('risk_id', id)
-      .order('created_at', { ascending: false })
-      .limit(20),
+      .eq('risk_id', id).order('created_at', { ascending: false }).limit(20),
+    supabase.from('avr_user_profiles').select('role').eq('id', user.id).single(),
+    supabase.from('avr_risk_closures')
+      .select('id, status, approver:avr_user_profiles!avr_risk_closures_approver_id_fkey(full_name), requested_at')
+      .eq('risk_id', id).eq('status', 'Pending').maybeSingle(),
   ])
 
-  const { data: profile } = await supabase
-    .from('avr_user_profiles').select('role').eq('id', user.id).single()
-
-  const canEdit = ['admin', 'risk_manager'].includes(profile?.role ?? '')
+  const canEdit    = ['admin','risk_manager'].includes(profile?.role ?? '')
+  const isAdmin    = profile?.role === 'admin'
+  const isOwner    = risk.risk_owner_id === user.id
+  const canClose   = (isOwner || isAdmin) && risk.status !== 'Closed'
+  const isClosed   = risk.status === 'Closed'
 
   return (
     <div className="space-y-6 max-w-4xl">
 
-      {/* Back */}
+      {/* Header */}
       <div>
         <Link href="/risks" className="inline-flex items-center gap-1.5 text-xs text-black/40 hover:text-black mb-3 transition-colors">
           <ArrowLeft size={13} /> Kembali ke Risk Register
         </Link>
-
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -85,21 +86,61 @@ export default async function RiskDetailPage({ params }: Props) {
               <p className="text-sm text-black/50 mt-1 leading-relaxed">{risk.description}</p>
             )}
           </div>
-          {canEdit && risk.status !== 'Closed' && (
-            <Link href={`/risks/${id}/edit`} className="btn-secondary text-sm shrink-0">
-              Edit Risiko
-            </Link>
+
+          {/* Action buttons */}
+          {!isClosed && (
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              {canEdit && (
+                <Link href={`/risks/${id}/edit`} className="btn-secondary text-sm gap-1.5">
+                  <Pencil size={13} /> Edit
+                </Link>
+              )}
+              {canEdit && (
+                <Link href={`/risks/${id}/review`} className="btn-secondary text-sm gap-1.5">
+                  <Clock size={13} /> Review
+                </Link>
+              )}
+              {canClose && !pendingClosure && (
+                <Link href={`/risks/${id}/closure`} className="btn-secondary text-sm gap-1.5">
+                  <XCircle size={13} /> Tutup Risiko
+                </Link>
+              )}
+            </div>
           )}
         </div>
       </div>
 
+      {/* Pending closure banner */}
+      {pendingClosure && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-brand-lime/10 border border-brand-lime/30">
+          <Clock size={15} className="text-brand-navy shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-brand-navy">Menunggu Approval Penutupan</p>
+            <p className="text-xs text-black/50 mt-0.5">
+              Diajukan {formatDate(pendingClosure.requested_at)} · Approver: {(pendingClosure as any).approver?.full_name ?? '—'}
+            </p>
+          </div>
+          {isAdmin && (
+            <Link href={`/risks/${id}/approve-closure`} className="btn-primary text-xs gap-1">
+              <CheckCircle size={13} /> Review Approval
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* Closed banner */}
+      {isClosed && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-black/4 border border-black/8">
+          <CheckCircle size={15} className="text-black/40 shrink-0" />
+          <p className="text-sm text-black/50">Risiko ini sudah ditutup. Seluruh data bersifat read-only.</p>
+        </div>
+      )}
+
       {/* Info grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        {/* Identitas */}
         <div className="card space-y-3">
-          <h3 className="text-sm font-semibold text-brand-navy mb-3">Identitas Risiko</h3>
-
+          <h3 className="mb-3">Identitas Risiko</h3>
           <InfoRow icon={<Shield size={13} />} label="Kategori" value={risk.category} />
           <InfoRow icon={<Building2 size={13} />} label="Unit Kerja"
             value={(risk as any).unit_kerja?.nama ?? '—'}
@@ -112,8 +153,7 @@ export default async function RiskDetailPage({ params }: Props) {
           {risk.asset_terkait && (
             <InfoRow icon={<Shield size={13} />} label="Aset Terkait" value={risk.asset_terkait} />
           )}
-          <InfoRow icon={<Calendar size={13} />} label="Tanggal Identifikasi"
-            value={formatDate(risk.date_identified)} />
+          <InfoRow icon={<Calendar size={13} />} label="Tanggal Identifikasi" value={formatDate(risk.date_identified)} />
           {risk.existing_control && (
             <div>
               <p className="text-xs text-black/40 mb-1">Kontrol yang Sudah Ada</p>
@@ -122,10 +162,8 @@ export default async function RiskDetailPage({ params }: Props) {
           )}
         </div>
 
-        {/* Ownership */}
         <div className="card space-y-3">
-          <h3 className="text-sm font-semibold text-brand-navy mb-3">Ownership & Penilaian</h3>
-
+          <h3 className="mb-3">Ownership & Penilaian</h3>
           <InfoRow icon={<User size={13} />} label="Risk Owner (Accountable)"
             value={(risk as any).risk_owner?.full_name ?? '—'}
             sub={(risk as any).risk_owner?.job_title} />
@@ -136,30 +174,20 @@ export default async function RiskDetailPage({ params }: Props) {
           <div className="border-t border-black/5 pt-3">
             <p className="text-xs text-black/40 mb-2">Penilaian Risiko</p>
             <div className="grid grid-cols-2 gap-3">
-              <ScoreCard
-                label="Inherent"
-                score={risk.inherent_score}
+              <ScoreCard label="Inherent" score={risk.inherent_score}
                 classification={risk.inherent_classification}
-                likelihood={risk.likelihood}
-                impact={risk.impact}
-              />
+                likelihood={risk.likelihood} impact={risk.impact} />
               {risk.residual_score > 0 && (
-                <ScoreCard
-                  label="Residual"
-                  score={risk.residual_score}
+                <ScoreCard label="Residual" score={risk.residual_score}
                   classification={risk.residual_classification}
-                  likelihood={risk.residual_likelihood}
-                  impact={risk.residual_impact}
-                />
+                  likelihood={risk.residual_likelihood} impact={risk.residual_impact} />
               )}
             </div>
           </div>
 
           <div className="border-t border-black/5 pt-3">
             <p className="text-xs text-black/40 mb-1">Treatment Strategy</p>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-brand-navy">{risk.treatment_strategy ?? '—'}</span>
-            </div>
+            <p className="text-sm font-medium">{risk.treatment_strategy ?? '—'}</p>
             {risk.treatment_notes && (
               <p className="text-xs text-black/50 mt-1 leading-relaxed">{risk.treatment_notes}</p>
             )}
@@ -184,18 +212,16 @@ export default async function RiskDetailPage({ params }: Props) {
 
       {/* Mitigation Timeline */}
       <MitigationSection
-        riskId={id}
-        riskStatus={risk.status}
+        riskId={id} riskStatus={risk.status}
         logs={mitigationLogs ?? []}
-        canEdit={canEdit}
-        currentUserId={user.id}
+        canEdit={canEdit} currentUserId={user.id}
       />
 
       {/* Review History */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3>Histori Review</h3>
-          {canEdit && risk.status !== 'Closed' && (
+          {canEdit && !isClosed && (
             <Link href={`/risks/${id}/review`} className="btn-primary text-xs gap-1">
               <Clock size={13} /> Tambah Review
             </Link>
@@ -207,18 +233,15 @@ export default async function RiskDetailPage({ params }: Props) {
           <div className="space-y-3">
             {reviews?.map(r => (
               <div key={r.id} className="flex gap-4 p-3 rounded-lg bg-brand-gray">
-                <div className="w-px bg-brand-blue/20 mx-1" />
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span className="text-xs font-medium text-brand-navy">{formatDate(r.review_date)}</span>
-                    <span className="badge bg-blue-50 text-brand-blue border-brand-blue/20">{r.review_decision}</span>
+                    <span className="badge bg-blue-50 text-brand-blue border-brand-blue/20 text-[10px]">{r.review_decision}</span>
                     <span className="text-xs text-black/40">oleh {(r as any).reviewer?.full_name ?? '—'}</span>
                   </div>
                   {r.review_notes && <p className="text-xs text-black/60 leading-relaxed">{r.review_notes}</p>}
                   <div className="flex items-center gap-3 mt-1">
-                    <span className="text-xs text-black/40">
-                      Score: {r.previous_score ?? '—'} → {r.current_score}
-                    </span>
+                    <span className="text-xs text-black/40">Score: {r.previous_score ?? '—'} → {r.current_score}</span>
                     {r.current_class && <ClassificationBadge classification={r.current_class} size="sm" />}
                   </div>
                 </div>
@@ -240,7 +263,7 @@ export default async function RiskDetailPage({ params }: Props) {
                 <div className="w-1.5 h-1.5 rounded-full bg-brand-blue mt-1.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-medium text-black">{log.action}</span>
+                    <span className="text-xs font-medium">{log.action}</span>
                     <span className="text-xs text-black/40">oleh {(log as any).actor?.full_name ?? '—'}</span>
                   </div>
                   <span className="text-xs text-black/30">{new Date(log.created_at).toLocaleString('id-ID')}</span>
@@ -255,9 +278,7 @@ export default async function RiskDetailPage({ params }: Props) {
   )
 }
 
-function InfoRow({ icon, label, value, sub }: {
-  icon: React.ReactNode; label: string; value: string; sub?: string
-}) {
+function InfoRow({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
   return (
     <div className="flex items-start gap-2">
       <span className="text-black/30 mt-0.5 shrink-0">{icon}</span>
@@ -279,11 +300,7 @@ function ScoreCard({ label, score, classification, likelihood, impact }: {
       <p className="text-xs text-black/40 mb-1">{label}</p>
       <p className="text-2xl font-bold text-brand-navy">{score}</p>
       <p className="text-xs text-black/30">L{likelihood} × I{impact}</p>
-      {classification && (
-        <div className="mt-1">
-          <ClassificationBadge classification={classification as any} size="sm" />
-        </div>
-      )}
+      {classification && <div className="mt-1"><ClassificationBadge classification={classification as any} size="sm" /></div>}
     </div>
   )
 }
