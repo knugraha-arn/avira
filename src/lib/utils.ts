@@ -19,7 +19,7 @@ export const CLASSIFICATION_CONFIG: Record<AvrClassification, {
     bg:     'bg-risk-low',
     text:   'text-risk-low-text',
     border: 'border-risk-low-text/20',
-    dot:    'bg-[#5A9E2F]',
+    dot:    'bg-[#1E5C0A]',
   },
   Medium: {
     label:  'Medium',
@@ -39,7 +39,7 @@ export const CLASSIFICATION_CONFIG: Record<AvrClassification, {
     label:  'Extreme',
     bg:     'bg-risk-extreme',
     text:   'text-risk-extreme-text',
-    border: 'border-white/20',
+    border: 'border-red-700/30',
     dot:    'bg-white',
   },
 }
