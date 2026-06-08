@@ -21,6 +21,15 @@ const FOKUS_OPTIONS = [
   'Sumber Daya Manusia', 'Finansial', 'Reputasi', 'Teknologi',
 ]
 
+const LOADING_MESSAGES = [
+  'Menganalisis konteks yang diberikan...',
+  'Mengidentifikasi potensi ancaman...',
+  'Menilai likelihood dan dampak...',
+  'Menyusun pertanyaan reflektif...',
+  'Memvalidasi terhadap ISO 27001...',
+  'Menyiapkan hasil identifikasi...',
+]
+
 interface GeneratedRisk {
   judul: string
   kategori: string
@@ -39,19 +48,15 @@ type Stage = 'input' | 'generating' | 'result'
 export default function RiskGeneratorPage() {
   const router = useRouter()
 
-  // Stage
-  const [stage, setStage] = useState<Stage>('input')
-
-  // Input form
-  const [scope, setScope]       = useState('')
+  const [stage, setStage]         = useState<Stage>('input')
+  const [scope, setScope]         = useState('')
   const [deskripsi, setDeskripsi] = useState('')
-  const [fokus, setFokus]       = useState<string[]>([])
-
-  // Results
-  const [risks, setRisks]       = useState<GeneratedRisk[]>([])
-  const [selected, setSelected] = useState<Set<number>>(new Set())
-  const [streaming, setStreaming] = useState('')
-  const [expanded, setExpanded] = useState<number | null>(null)
+  const [fokus, setFokus]         = useState<string[]>([])
+  const [risks, setRisks]         = useState<GeneratedRisk[]>([])
+  const [selected, setSelected]   = useState<Set<number>>(new Set())
+  const [expanded, setExpanded]   = useState<number | null>(null)
+  const [progress, setProgress]   = useState(0)
+  const [loadingMsg, setLoadingMsg] = useState(LOADING_MESSAGES[0])
 
   function toggleFokus(f: string) {
     setFokus(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
@@ -68,9 +73,21 @@ export default function RiskGeneratorPage() {
   async function handleGenerate() {
     if (!deskripsi.trim()) { toast.error('Deskripsikan konteks terlebih dahulu'); return }
     setStage('generating')
-    setStreaming('')
+    setProgress(0)
     setRisks([])
     setSelected(new Set())
+
+    // Animate progress bar and cycle messages
+    let prog = 0
+    let msgIdx = 0
+    const interval = setInterval(() => {
+      prog = Math.min(prog + Math.random() * 8, 88)
+      setProgress(prog)
+      if (prog > msgIdx * 15 && msgIdx < LOADING_MESSAGES.length - 1) {
+        msgIdx++
+        setLoadingMsg(LOADING_MESSAGES[msgIdx])
+      }
+    }, 400)
 
     try {
       const res = await fetch('/api/risk-generator', {
@@ -93,34 +110,33 @@ export default function RiskGeneratorPage() {
         const lines = chunk.split('\n').filter(l => l.startsWith('data: '))
 
         for (const line of lines) {
-          const data = JSON.parse(line.slice(6))
-          if (data.error) throw new Error(data.error)
-          if (data.chunk) {
-            fullText += data.chunk
-            setStreaming(fullText)
-          }
-          if (data.done) {
-            try {
-              // Clean and parse JSON
-              const clean = data.full
-                .replace(/```json/g, '').replace(/```/g, '').trim()
-              const parsed: GeneratedRisk[] = JSON.parse(clean)
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (data.error) throw new Error(data.error)
+            if (data.chunk) fullText += data.chunk
+            if (data.done) {
+              clearInterval(interval)
+              setProgress(100)
+              setLoadingMsg('Selesai!')
+
+              const parsed: GeneratedRisk[] = JSON.parse(data.full)
               setRisks(parsed)
-              // Auto-select High and Extreme
+
               const autoSelect = new Set<number>()
               parsed.forEach((r, i) => {
                 if (['High', 'Extreme'].includes(r.klasifikasi)) autoSelect.add(i)
               })
               setSelected(autoSelect)
-              setStage('result')
-            } catch {
-              toast.error('Gagal memproses hasil AI — coba generate ulang')
-              setStage('input')
+
+              setTimeout(() => setStage('result'), 400)
             }
+          } catch (parseErr) {
+            // ignore partial chunks
           }
         }
       }
     } catch (err) {
+      clearInterval(interval)
       toast.error('Gagal menghubungi AI', { description: err instanceof Error ? err.message : '' })
       setStage('input')
     }
@@ -142,12 +158,9 @@ export default function RiskGeneratorPage() {
 
   function handleAddSelected() {
     if (selected.size === 0) { toast.error('Pilih minimal satu risiko'); return }
-    // Redirect to first selected, others will be queued
-    const first = Array.from(selected)[0]
-    handleAddToRegister(first)
+    handleAddToRegister(Array.from(selected)[0])
   }
 
-  // ── Render ──────────────────────────────────────
   return (
     <div className="space-y-6 max-w-4xl">
 
@@ -163,18 +176,16 @@ export default function RiskGeneratorPage() {
         </p>
       </div>
 
-      {/* ── Stage: Input ── */}
+      {/* ── Input ── */}
       {stage === 'input' && (
         <div className="space-y-4">
           <div className="card space-y-5">
 
-            {/* Scope */}
             <div>
               <label className="label">Scope Identifikasi</label>
               <div className="flex flex-wrap gap-2">
                 {SCOPE_OPTIONS.map(s => (
-                  <button key={s} type="button"
-                    onClick={() => setScope(scope === s ? '' : s)}
+                  <button key={s} type="button" onClick={() => setScope(scope === s ? '' : s)}
                     className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${scope === s ? 'bg-brand-blue text-white border-brand-blue' : 'bg-white text-black/60 border-black/10 hover:border-brand-blue/40'}`}>
                     {s}
                   </button>
@@ -182,27 +193,22 @@ export default function RiskGeneratorPage() {
               </div>
             </div>
 
-            {/* Deskripsi */}
             <div>
-              <label className="label">
-                Deskripsikan Konteks <span className="text-red-400">*</span>
-              </label>
+              <label className="label">Deskripsikan Konteks <span className="text-red-400">*</span></label>
               <textarea
                 className="input min-h-[140px] resize-y text-sm leading-relaxed"
                 placeholder={`Ceritakan secara bebas. Semakin detail, semakin relevan risiko yang dihasilkan.\n\nContoh: "Kami akan meluncurkan fitur pembayaran baru dalam 2 bulan. Tim developer 8 orang, sebagian remote. Integrasi dengan payment gateway Midtrans dan BCA. Data transaksi disimpan di server on-premise. Belum ada penetration testing sebelumnya."`}
                 value={deskripsi}
                 onChange={e => setDeskripsi(e.target.value)}
               />
-              <p className="text-xs text-black/30 mt-1">{deskripsi.length} karakter — minimal 50 karakter untuk hasil terbaik</p>
+              <p className="text-xs text-black/30 mt-1">{deskripsi.length} karakter</p>
             </div>
 
-            {/* Fokus */}
             <div>
-              <label className="label">Fokus Risiko (opsional — boleh pilih lebih dari satu)</label>
+              <label className="label">Fokus Risiko (opsional)</label>
               <div className="flex flex-wrap gap-2">
                 {FOKUS_OPTIONS.map(f => (
-                  <button key={f} type="button"
-                    onClick={() => toggleFokus(f)}
+                  <button key={f} type="button" onClick={() => toggleFokus(f)}
                     className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${fokus.includes(f) ? 'bg-brand-navy text-white border-brand-navy' : 'bg-white text-black/60 border-black/10 hover:border-black/30'}`}>
                     {f}
                   </button>
@@ -212,19 +218,15 @@ export default function RiskGeneratorPage() {
 
           </div>
 
-          {/* Info box */}
           <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-brand-blue/15">
             <HelpCircle size={15} className="text-brand-blue shrink-0 mt-0.5" />
-            <div className="text-xs text-brand-blue/80 leading-relaxed">
-              <strong>Cara kerja:</strong> AI akan menganalisis konteks Anda dan menghasilkan daftar potensi risiko lengkap dengan pertanyaan reflektif. Anda memilih risiko mana yang relevan, lalu menyesuaikannya sebelum masuk ke Risk Register. Setiap risiko akan ditandai sebagai <em>AI-Generated</em> untuk keperluan audit.
-            </div>
+            <p className="text-xs text-brand-blue/80 leading-relaxed">
+              <strong>Cara kerja:</strong> AI menganalisis konteks Anda dan menghasilkan potensi risiko lengkap dengan pertanyaan reflektif. Pilih risiko yang relevan, sesuaikan, lalu simpan ke Risk Register. Setiap risiko ditandai <em>AI-Generated</em> untuk keperluan audit ISO 27001.
+            </p>
           </div>
 
-          <button
-            onClick={handleGenerate}
-            disabled={deskripsi.trim().length < 20}
-            className="btn-primary px-6 py-2.5 gap-2 disabled:opacity-40"
-          >
+          <button onClick={handleGenerate} disabled={deskripsi.trim().length < 20}
+            className="btn-primary px-6 py-2.5 gap-2 disabled:opacity-40">
             <Sparkles size={16} />
             Identifikasi Risiko
             <ChevronRight size={15} />
@@ -232,33 +234,55 @@ export default function RiskGeneratorPage() {
         </div>
       )}
 
-      {/* ── Stage: Generating ── */}
+      {/* ── Generating ── */}
       {stage === 'generating' && (
         <div className="card">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-8 h-8 rounded-full bg-brand-blue/10 flex items-center justify-center">
-              <Loader2 size={16} className="text-brand-blue animate-spin" />
+            <div className="w-9 h-9 rounded-full bg-brand-blue/10 flex items-center justify-center shrink-0">
+              <Loader2 size={18} className="text-brand-blue animate-spin" />
             </div>
             <div>
-              <p className="font-medium text-brand-navy">AI sedang menganalisis konteks Anda...</p>
-              <p className="text-xs text-black/40 mt-0.5">Mengidentifikasi potensi risiko dan menyusun pertanyaan reflektif</p>
+              <p className="font-medium text-brand-navy">AI sedang menganalisis...</p>
+              <p className="text-xs text-black/40 mt-0.5">{loadingMsg}</p>
             </div>
           </div>
 
-          {/* Streaming preview */}
-          {streaming && (
-            <div className="bg-brand-gray rounded-lg p-4 font-mono text-xs text-black/50 max-h-48 overflow-y-auto">
-              {streaming}
+          {/* Progress bar */}
+          <div className="space-y-2">
+            <div className="w-full h-2 bg-black/6 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-brand-blue rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${progress}%` }}
+              />
             </div>
-          )}
+            <div className="flex justify-between text-xs text-black/30">
+              <span>Menganalisis konteks</span>
+              <span>{Math.round(progress)}%</span>
+            </div>
+          </div>
+
+          {/* Steps indicator */}
+          <div className="mt-6 grid grid-cols-3 gap-2">
+            {['Analisis Konteks', 'Identifikasi Risiko', 'Susun Pertanyaan'].map((step, i) => {
+              const done = progress > (i + 1) * 30
+              const active = progress > i * 30 && !done
+              return (
+                <div key={step} className={`flex items-center gap-2 p-2.5 rounded-lg text-xs transition-colors ${done ? 'bg-risk-low text-risk-low-text' : active ? 'bg-blue-50 text-brand-blue' : 'bg-brand-gray text-black/30'}`}>
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${done ? 'bg-[#5A9E2F] text-white' : active ? 'bg-brand-blue text-white' : 'bg-black/10 text-black/30'}`}>
+                    {done ? '✓' : i + 1}
+                  </span>
+                  {step}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
-      {/* ── Stage: Result ── */}
+      {/* ── Result ── */}
       {stage === 'result' && risks.length > 0 && (
         <div className="space-y-4">
 
-          {/* Summary bar */}
           <div className="card py-3 flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3">
               <Sparkles size={15} className="text-brand-blue" />
@@ -275,24 +299,17 @@ export default function RiskGeneratorPage() {
             </div>
           </div>
 
-          {/* Risk cards */}
           {risks.map((risk, i) => {
-            const cfg = classificationBadge(risk.klasifikasi)
             const isSelected = selected.has(i)
             const isExpanded = expanded === i
 
             return (
-              <div key={i}
-                className={`rounded-lg border transition-all ${isSelected ? 'border-brand-blue shadow-card-hover' : 'border-black/8 shadow-card'} bg-white`}>
-
-                {/* Card header */}
+              <div key={i} className={`rounded-lg border transition-all bg-white ${isSelected ? 'border-brand-blue shadow-card-hover' : 'border-black/8 shadow-card'}`}>
                 <div className="p-4 flex items-start gap-3">
-                  {/* Checkbox */}
                   <button type="button" onClick={() => toggleSelect(i)}
                     className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center shrink-0 transition-colors ${isSelected ? 'bg-brand-blue border-brand-blue' : 'border-black/20 hover:border-brand-blue'}`}>
                     {isSelected && <span className="text-white text-xs font-bold">✓</span>}
                   </button>
-
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <ClassificationBadge classification={risk.klasifikasi} size="sm" />
@@ -302,24 +319,19 @@ export default function RiskGeneratorPage() {
                     <p className="font-semibold text-brand-navy text-sm leading-snug">{risk.judul}</p>
                     <p className="text-xs text-black/50 mt-1 leading-relaxed">{risk.mengapa_relevan}</p>
                   </div>
-
                   <button type="button" onClick={() => setExpanded(isExpanded ? null : i)}
                     className="btn-ghost py-1 px-2 text-xs gap-1 shrink-0">
                     {isExpanded ? 'Tutup' : 'Detail'}
                   </button>
                 </div>
 
-                {/* Expanded detail */}
                 {isExpanded && (
                   <div className="border-t border-black/5 px-4 pb-4 pt-3 space-y-4">
-
-                    {/* Deskripsi */}
                     <div>
                       <p className="text-xs font-semibold text-black/40 uppercase tracking-wide mb-1">Deskripsi</p>
                       <p className="text-sm text-black/70 leading-relaxed">{risk.deskripsi}</p>
                     </div>
 
-                    {/* Pertanyaan reflektif */}
                     <div className="bg-brand-amber/10 rounded-lg p-3 border border-brand-amber/20">
                       <div className="flex items-center gap-2 mb-2">
                         <AlertTriangle size={13} className="text-[#7A4C00]" />
@@ -335,7 +347,6 @@ export default function RiskGeneratorPage() {
                       </ul>
                     </div>
 
-                    {/* Kontrol & Treatment */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="bg-brand-gray rounded-lg p-3">
                         <p className="text-xs font-semibold text-black/40 uppercase tracking-wide mb-1">Kontrol yang Mungkin Sudah Ada</p>
@@ -347,7 +358,6 @@ export default function RiskGeneratorPage() {
                       </div>
                     </div>
 
-                    {/* CTA */}
                     <button onClick={() => handleAddToRegister(i)} className="btn-primary text-xs gap-1.5 w-full justify-center py-2">
                       <Plus size={13} />
                       Tambah Risiko Ini ke Register
@@ -359,17 +369,15 @@ export default function RiskGeneratorPage() {
             )
           })}
 
-          {/* Bottom CTA */}
           <div className="flex items-center justify-between pt-2 pb-8">
             <button onClick={() => { setStage('input'); setRisks([]) }} className="btn-secondary gap-1.5">
-              <RotateCcw size={14} /> Generate dengan Konteks Berbeda
+              <RotateCcw size={14} /> Generate Ulang
             </button>
             <button onClick={handleAddSelected} disabled={selected.size === 0} className="btn-primary gap-1.5">
               <Plus size={15} />
               Tambah {selected.size} Risiko Terpilih ke Register
             </button>
           </div>
-
         </div>
       )}
 
