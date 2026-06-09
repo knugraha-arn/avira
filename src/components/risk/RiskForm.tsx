@@ -39,8 +39,9 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Check if pre-filled from AI generator
+  // AI pre-fill params
   const isAiGenerated = searchParams.get('ai_generated') === '1'
+  const libraryId     = searchParams.get('library_id') ?? ''   // dari Risk Library
   const aiJudul       = searchParams.get('ai_judul') ?? ''
   const aiKategori    = searchParams.get('ai_kategori') ?? ''
   const aiDeskripsi   = searchParams.get('ai_deskripsi') ?? ''
@@ -85,6 +86,7 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
     }
     setLoading(true)
     const supabase = createClient()
+
     const payload: Record<string, unknown> = {
       title:                form.title,
       description:          form.description || null,
@@ -107,13 +109,25 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
       payload.residual_likelihood = form.residual_likelihood
       payload.residual_impact     = form.residual_impact
     }
+
     const { data, error } = await supabase
       .from('avr_risks').insert(payload).select('id').single()
+
     if (error) {
       toast.error('Gagal menyimpan', { description: error.message })
       setLoading(false)
       return
     }
+
+    // Mark library item as used kalau dari Risk Library
+    if (libraryId && data.id) {
+      await fetch('/api/mark-library-used', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ library_id: libraryId, risk_id: data.id }),
+      })
+    }
+
     toast.success('Risiko berhasil ditambahkan')
     router.push(`/risks/${data.id}`)
     router.refresh()
@@ -127,8 +141,8 @@ export function RiskForm({ unitKerjaList, users, currentUserId }: Props) {
         <div className="flex items-center gap-3 p-3 rounded-lg bg-brand-blue/5 border border-brand-blue/20">
           <Sparkles size={15} className="text-brand-blue shrink-0" />
           <div className="text-xs text-brand-blue/80 leading-relaxed">
-            <strong>Diisi dari Risk Generator AI.</strong> Review dan sesuaikan seluruh field sebelum menyimpan.
-            Data ini akan tercatat sebagai <em>AI-assisted</em> dalam audit trail.
+            <strong>Diisi dari Risk Library (AI-Generated).</strong> Review dan sesuaikan seluruh field sebelum menyimpan.
+            {libraryId && <span className="block mt-0.5 text-brand-blue/60">Item Library akan otomatis ditandai <em>used</em> setelah disimpan.</span>}
           </div>
         </div>
       )}
