@@ -2,50 +2,48 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
 import Link from 'next/link'
-import {
-  FileText, AlertTriangle, Clock,
-  Flag, TrendingUp, Download,
-} from 'lucide-react'
+import { FileText, AlertTriangle, Clock, Flag, Download } from 'lucide-react'
 import type { AvrUserProfile } from '@/types'
+import { canReport } from '@/lib/roles'
 
 export const metadata = { title: 'Laporan' }
 
 const REPORTS = [
   {
-    id:          'risk-register',
-    title:       'Risk Register Report',
-    desc:        'Seluruh risiko aktif lengkap dengan owner, score, treatment, dan status mitigasi.',
-    icon:        FileText,
-    color:       'bg-blue-50 text-brand-blue',
-    href:        '/api/report-rr',
-    compliance:  'ISO 27001 Kl. 6.1 · ISO 9001 Kl. 6.1',
+    id:         'risk-register',
+    title:      'Risk Register Report',
+    desc:       'Seluruh risiko aktif lengkap dengan owner, score, treatment, dan status mitigasi.',
+    icon:       FileText,
+    color:      'bg-blue-50 text-brand-blue',
+    href:       '/api/report-rr',
+    compliance: 'ISO 27001 Kl. 6.1 · ISO 9001 Kl. 6.1',
   },
   {
-    id:          'high-risk',
-    title:       'High & Extreme Risk Report',
-    desc:        'Risiko dengan klasifikasi High dan Extreme, diurutkan berdasarkan score tertinggi.',
-    icon:        AlertTriangle,
-    color:       'bg-red-50 text-red-600',
-    href:        '/api/report-high',
-    compliance:  'ISO 27001 Kl. 8.2',
+    id:         'high-risk',
+    title:      'High & Extreme Risk Report',
+    desc:       'Risiko dengan klasifikasi High dan Extreme, diurutkan berdasarkan score tertinggi.',
+    icon:       AlertTriangle,
+    color:      'bg-red-50 text-red-600',
+    href:       '/api/report-high',
+    compliance: 'ISO 27001 Kl. 8.2',
   },
   {
-    id:          'overdue',
-    title:       'Overdue Mitigation Report',
-    desc:        'Risiko dengan mitigasi yang melewati target penyelesaian.',
-    icon:        Clock,
-    color:       'bg-brand-amber/10 text-[#7A4C00]',
-    href:        '/api/report-overdue',
-    compliance:  'ISO 27001 Kl. 9.1',
+    id:         'overdue',
+    title:      'Overdue Mitigation Report',
+    desc:       'Risiko dengan mitigasi yang melewati target penyelesaian.',
+    icon:       Clock,
+    color:      'bg-brand-amber/10 text-[#7A4C00]',
+    href:       '/api/report-overdue',
+    compliance: 'ISO 27001 Kl. 9.1',
   },
   {
-    id:          'mrm',
-    title:       'MRM Summary Report',
-    desc:        'Ringkasan risiko untuk agenda Management Review Meeting.',
-    icon:        Flag,
-    color:       'bg-brand-lime/20 text-brand-navy',
-    href:        '/api/report-mrm',
-    compliance:  'ISO 27001 Kl. 9.3 · ISO 9001 Kl. 9.3',
+    id:         'mrm',
+    title:      'MRM Summary Report',
+    desc:       'Ringkasan risiko untuk agenda Management Review Meeting.',
+    icon:       Flag,
+    color:      'bg-brand-lime/20 text-brand-navy',
+    href:       '/api/report-mrm',
+    compliance: 'ISO 27001 Kl. 9.3 · ISO 9001 Kl. 9.3',
   },
 ]
 
@@ -58,6 +56,9 @@ export default async function ReportsPage() {
     .from('avr_user_profiles').select('*').eq('id', user.id).single()
   if (!profile) redirect('/auth/login')
 
+  // Viewer tidak bisa akses laporan
+  if (!canReport(profile.role)) redirect('/dashboard')
+
   const { count: unreadCount } = await supabase
     .from('avr_notifications')
     .select('*', { count: 'exact', head: true })
@@ -68,12 +69,11 @@ export default async function ReportsPage() {
       <Sidebar profile={profile as AvrUserProfile} unreadCount={unreadCount ?? 0} />
       <main className="flex-1 ml-56 min-w-0">
         <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
-
           <div>
             <span className="eyebrow">Export</span>
             <h1 className="mt-1">Laporan</h1>
             <p className="text-sm text-black/50 mt-0.5">
-              Generate laporan dalam format PDF — siap untuk audit ISO 27001 & ISO 9001
+              Generate laporan PDF — siap untuk audit ISO 27001 & ISO 9001
             </p>
           </div>
 
@@ -100,11 +100,10 @@ export default async function ReportsPage() {
 
           <div className="card bg-brand-gray border-0 p-4">
             <p className="text-xs text-black/40 leading-relaxed">
-              <strong className="text-black/60">Catatan:</strong> Laporan di-generate secara real-time dari data terkini.
-              Setiap laporan menyertakan tanggal generate dan nama pembuat untuk keperluan audit trail.
+              <strong className="text-black/60">Catatan:</strong> Laporan digenerate real-time dari data terkini.
+              Setiap laporan menyertakan tanggal generate dan nama pembuat untuk audit trail.
             </p>
           </div>
-
         </div>
       </main>
     </div>

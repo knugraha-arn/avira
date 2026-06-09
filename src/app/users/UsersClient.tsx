@@ -7,12 +7,9 @@ import {
   Plus, Pencil, ToggleLeft, ToggleRight,
   X, UserCheck, AlertTriangle, Mail, Clock,
 } from 'lucide-react'
+import { ROLES, type AvrRole } from '@/lib/roles'
 
-const ROLES = [
-  { value: 'admin',        label: 'Admin',        desc: 'Semua akses + kelola user + approve closure' },
-  { value: 'risk_manager', label: 'Risk Manager', desc: 'Buat/edit risk, mitigasi, review, request closure' },
-  { value: 'viewer',       label: 'Viewer',       desc: 'Read-only — cocok untuk direksi atau auditor' },
-]
+const ROLE_LIST: AvrRole[] = ['admin', 'risk_manager', 'auditor', 'viewer']
 
 interface UnitKerja { id: string; kode: string; nama: string }
 
@@ -50,22 +47,20 @@ interface Props {
 }
 
 export function UsersClient({ initialUsers, initialInvites, unitKerjaList, currentUserId }: Props) {
-  const [users, setUsers]     = useState<User[]>(initialUsers)
-  const [invites, setInvites] = useState<Invite[]>(initialInvites)
+  const [users, setUsers]           = useState<User[]>(initialUsers)
+  const [invites, setInvites]       = useState<Invite[]>(initialInvites)
   const [showInvite, setShowInvite] = useState(false)
-  const [editing, setEditing] = useState<User | null>(null)
-  const [saving, setSaving]   = useState(false)
-  const [search, setSearch]   = useState('')
-  const [tab, setTab]         = useState<'users' | 'invites'>('users')
+  const [editing, setEditing]       = useState<User | null>(null)
+  const [saving, setSaving]         = useState(false)
+  const [search, setSearch]         = useState('')
+  const [tab, setTab]               = useState<'users' | 'invites'>('users')
 
-  // Invite form
   const [invEmail, setInvEmail] = useState('')
   const [invName, setInvName]   = useState('')
-  const [invRole, setInvRole]   = useState('viewer')
+  const [invRole, setInvRole]   = useState<AvrRole>('viewer')
   const [invUK, setInvUK]       = useState('')
   const [invTitle, setInvTitle] = useState('')
 
-  // Edit form
   const [editRole, setEditRole]   = useState('')
   const [editUK, setEditUK]       = useState('')
   const [editTitle, setEditTitle] = useState('')
@@ -84,116 +79,73 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
     i.email.toLowerCase().includes(search.toLowerCase())
   )
 
+  const pendingInvites = invites.filter(i => !i.accepted_at && i.is_active)
+
+  // Highlight users inactive > 90 days
+  function isInactiveWarning(u: User): boolean {
+    if (!u.last_login_at) return false
+    const days = Math.floor((Date.now() - new Date(u.last_login_at).getTime()) / 86400000)
+    return days > 90
+  }
+
   async function handleInvite() {
     if (!invEmail.trim()) { toast.error('Email wajib diisi'); return }
     if (!invEmail.toLowerCase().includes('@arranetwork.com')) {
       toast.error('Hanya email @arranetwork.com yang diizinkan'); return
     }
     if (!invName.trim()) { toast.error('Nama wajib diisi'); return }
-
     const emailLower = invEmail.trim().toLowerCase()
     if (users.some(u => u.email === emailLower)) {
-      toast.error('Email ini sudah terdaftar sebagai pengguna aktif'); return
+      toast.error('Email sudah terdaftar sebagai pengguna aktif'); return
     }
     if (invites.some(i => i.email === emailLower && i.is_active && !i.accepted_at)) {
-      toast.error('Email ini sudah memiliki undangan yang aktif'); return
+      toast.error('Email sudah memiliki undangan aktif'); return
     }
-
     setSaving(true)
     const supabase = createClient()
-
     const { data, error } = await supabase
       .from('avr_user_invites')
-      .insert({
-        email:         emailLower,
-        full_name:     invName.trim(),
-        role:          invRole,
-        job_title:     invTitle || null,
-        unit_kerja_id: invUK || null,
-        invited_by:    currentUserId,
-      })
-      .select('*')
-      .single()
-
-    if (error) {
-      toast.error('Gagal mengundang', { description: error.message })
-      setSaving(false); return
-    }
-
-    const newInvite: Invite = {
-      ...data,
-      unit_kerja: invUK ? ukMap.get(invUK) ?? null : null,
-    }
-
-    setInvites(i => [...i, newInvite])
+      .insert({ email: emailLower, full_name: invName.trim(), role: invRole, job_title: invTitle || null, unit_kerja_id: invUK || null, invited_by: currentUserId })
+      .select('*').single()
+    if (error) { toast.error('Gagal mengundang', { description: error.message }); setSaving(false); return }
+    setInvites(i => [...i, { ...data, unit_kerja: invUK ? ukMap.get(invUK) ?? null : null }])
     setTab('invites')
-    toast.success(`Undangan untuk ${invName} berhasil dibuat`)
+    toast.success(`${invName} berhasil diundang sebagai ${ROLES[invRole].label}`)
     setShowInvite(false)
     setInvEmail(''); setInvName(''); setInvRole('viewer'); setInvUK(''); setInvTitle('')
     setSaving(false)
   }
 
   function openEdit(u: User) {
-    setEditing(u)
-    setEditRole(u.role)
-    setEditUK(u.unit_kerja_id ?? '')
-    setEditTitle(u.job_title ?? '')
-    setEditName(u.full_name)
+    setEditing(u); setEditRole(u.role); setEditUK(u.unit_kerja_id ?? ''); setEditTitle(u.job_title ?? ''); setEditName(u.full_name)
   }
 
   async function handleSaveEdit() {
     if (!editing) return
     setSaving(true)
     const supabase = createClient()
-
     const { data, error } = await supabase
       .from('avr_user_profiles')
-      .update({
-        full_name:     editName,
-        role:          editRole,
-        unit_kerja_id: editUK || null,
-        job_title:     editTitle || null,
-      })
-      .eq('id', editing.id)
-      .select('*')
-      .single()
-
+      .update({ full_name: editName, role: editRole, unit_kerja_id: editUK || null, job_title: editTitle || null })
+      .eq('id', editing.id).select('*').single()
     if (error) { toast.error(error.message); setSaving(false); return }
-
-    const updated: User = {
-      ...data,
-      unit_kerja: editUK ? ukMap.get(editUK) ?? null : null,
-    }
-
-    setUsers(u => u.map(x => x.id === editing.id ? updated : x))
+    setUsers(u => u.map(x => x.id === editing.id ? { ...data, unit_kerja: editUK ? ukMap.get(editUK) ?? null : null } : x))
     toast.success('Data pengguna diperbarui')
     setEditing(null); setSaving(false)
   }
 
   async function toggleActive(u: User) {
-    if (u.id === currentUserId) {
-      toast.error('Tidak bisa menonaktifkan akun sendiri'); return
-    }
+    if (u.id === currentUserId) { toast.error('Tidak bisa menonaktifkan akun sendiri'); return }
     if (u.is_active) {
       const supabase = createClient()
-      const { count } = await supabase
-        .from('avr_risks')
-        .select('*', { count: 'exact', head: true })
-        .eq('risk_owner_id', u.id)
-        .neq('status', 'Closed')
+      const { count } = await supabase.from('avr_risks').select('*', { count: 'exact', head: true }).eq('risk_owner_id', u.id).neq('status', 'Closed')
       if (count && count > 0) {
-        toast.warning(
-          `${u.full_name} masih menjadi Risk Owner di ${count} risiko aktif. Pastikan sudah di-reassign dulu.`,
-          { duration: 6000 }
-        )
+        toast.warning(`${u.full_name} masih Risk Owner di ${count} risiko aktif. Reassign dulu sebelum nonaktifkan.`, { duration: 6000 })
         return
       }
     }
     const supabase = createClient()
-    const { error } = await supabase
-      .from('avr_user_profiles')
-      .update({ is_active: !u.is_active })
-      .eq('id', u.id)
+    const { error } = await supabase.from('avr_user_profiles').update({ is_active: !u.is_active }).eq('id', u.id)
     if (error) { toast.error(error.message); return }
     setUsers(us => us.map(x => x.id === u.id ? { ...x, is_active: !x.is_active } : x))
     toast.success(u.is_active ? `${u.full_name} dinonaktifkan` : `${u.full_name} diaktifkan`)
@@ -201,30 +153,14 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
 
   async function cancelInvite(invite: Invite) {
     const supabase = createClient()
-    const { error } = await supabase
-      .from('avr_user_invites')
-      .update({ is_active: false })
-      .eq('id', invite.id)
+    const { error } = await supabase.from('avr_user_invites').update({ is_active: false }).eq('id', invite.id)
     if (error) { toast.error(error.message); return }
     setInvites(i => i.map(x => x.id === invite.id ? { ...x, is_active: false } : x))
     toast.success('Undangan dibatalkan')
   }
 
-  const roleBadge = (role: string) => ({
-    admin:        'bg-risk-extreme text-risk-extreme-text border-red-700/30',
-    risk_manager: 'bg-blue-50 text-brand-blue border-brand-blue/20',
-    viewer:       'bg-black/5 text-black/50 border-black/10',
-  }[role] ?? 'bg-black/5 text-black/50 border-black/10')
-
-  const roleLabel = (role: string) =>
-    role === 'risk_manager' ? 'Risk Manager' : role.charAt(0).toUpperCase() + role.slice(1)
-
-  const pendingInvites = invites.filter(i => !i.accepted_at && i.is_active)
-
   return (
     <div className="space-y-5">
-
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <span className="eyebrow">Admin</span>
@@ -252,132 +188,116 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
         ))}
       </div>
 
-      {/* Search */}
       <div className="card py-3">
         <input className="input" placeholder="Cari nama atau email..."
           value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* Users table */}
       {tab === 'users' && (
         <div className="card p-0 overflow-hidden">
           <table className="table-base">
             <thead>
               <tr>
-                <th>Nama</th>
-                <th>Email</th>
-                <th>Unit Kerja</th>
-                <th>Jabatan</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Login Terakhir</th>
-                <th></th>
+                <th>Nama</th><th>Email</th><th>Unit Kerja</th>
+                <th>Jabatan</th><th>Role</th><th>Status</th>
+                <th>Login Terakhir</th><th></th>
               </tr>
             </thead>
             <tbody>
               {filteredUsers.length === 0 && (
                 <tr><td colSpan={8} className="text-center py-10 text-black/30">Tidak ada pengguna</td></tr>
               )}
-              {filteredUsers.map(u => (
-                <tr key={u.id} className={!u.is_active ? 'opacity-50' : ''}>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue text-xs font-semibold shrink-0">
-                        {u.full_name.charAt(0).toUpperCase()}
+              {filteredUsers.map(u => {
+                const roleConfig = ROLES[u.role as AvrRole] ?? ROLES.viewer
+                const inactive90 = isInactiveWarning(u)
+                return (
+                  <tr key={u.id} className={!u.is_active ? 'opacity-50' : ''}>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue text-xs font-semibold shrink-0">
+                          {u.full_name.charAt(0).toUpperCase()}
+                        </div>
+                        <p className="font-medium text-sm">{u.full_name}</p>
                       </div>
-                      <p className="font-medium text-sm">{u.full_name}</p>
-                    </div>
-                  </td>
-                  <td className="text-xs text-black/60">{u.email}</td>
-                  <td className="text-xs">
-                    {u.unit_kerja
-                      ? <span>{u.unit_kerja.nama} <span className="text-black/30">({u.unit_kerja.kode})</span></span>
-                      : <span className="text-black/25">—</span>}
-                  </td>
-                  <td className="text-xs text-black/60">{u.job_title ?? '—'}</td>
-                  <td><span className={`badge text-[11px] ${roleBadge(u.role)}`}>{roleLabel(u.role)}</span></td>
-                  <td>
-                    <span className={`badge ${u.is_active ? 'bg-risk-low text-risk-low-text border-risk-low-text/20' : 'bg-black/5 text-black/40 border-black/10'}`}>
-                      {u.is_active ? 'Aktif' : 'Nonaktif'}
-                    </span>
-                  </td>
-                  <td className="text-xs text-black/40">
-                    {u.last_login_at
-                      ? new Date(u.last_login_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
-                      : <span className="text-black/25">Belum pernah</span>}
-                  </td>
-                  <td>
-                    <div className="flex items-center gap-1.5 justify-end">
-                      <button onClick={() => openEdit(u)} className="btn-ghost py-1 px-2 text-xs gap-1">
-                        <Pencil size={11} /> Edit
-                      </button>
-                      {u.id !== currentUserId && (
-                        <button onClick={() => toggleActive(u)} className="btn-ghost py-1 px-2 text-xs gap-1">
-                          {u.is_active ? <ToggleRight size={13} className="text-brand-blue" /> : <ToggleLeft size={13} />}
-                          {u.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                    </td>
+                    <td className="text-xs text-black/60">{u.email}</td>
+                    <td className="text-xs">
+                      {u.unit_kerja ? <span>{u.unit_kerja.nama} <span className="text-black/30">({u.unit_kerja.kode})</span></span> : <span className="text-black/25">—</span>}
+                    </td>
+                    <td className="text-xs text-black/60">{u.job_title ?? '—'}</td>
+                    <td><span className={`badge text-[11px] ${roleConfig.color}`}>{roleConfig.label}</span></td>
+                    <td>
+                      <span className={`badge ${u.is_active ? 'bg-risk-low text-risk-low-text border-risk-low-text/20' : 'bg-black/5 text-black/40 border-black/10'}`}>
+                        {u.is_active ? 'Aktif' : 'Nonaktif'}
+                      </span>
+                    </td>
+                    <td className={`text-xs ${inactive90 ? 'text-red-500 font-medium' : 'text-black/40'}`}>
+                      {u.last_login_at
+                        ? <>
+                            {new Date(u.last_login_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                            {inactive90 && <span className="block text-[10px]">⚠️ {'>'} 90 hari</span>}
+                          </>
+                        : <span className="text-black/25">Belum pernah</span>}
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1.5 justify-end">
+                        <button onClick={() => openEdit(u)} className="btn-ghost py-1 px-2 text-xs gap-1">
+                          <Pencil size={11} /> Edit
                         </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {u.id !== currentUserId && (
+                          <button onClick={() => toggleActive(u)} className="btn-ghost py-1 px-2 text-xs gap-1">
+                            {u.is_active ? <ToggleRight size={13} className="text-brand-blue" /> : <ToggleLeft size={13} />}
+                            {u.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
       )}
 
-      {/* Invites table */}
       {tab === 'invites' && (
         <div className="card p-0 overflow-hidden">
           <table className="table-base">
             <thead>
-              <tr>
-                <th>Nama</th>
-                <th>Email</th>
-                <th>Unit Kerja</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Diundang</th>
-                <th></th>
-              </tr>
+              <tr><th>Nama</th><th>Email</th><th>Unit Kerja</th><th>Role</th><th>Status</th><th>Diundang</th><th></th></tr>
             </thead>
             <tbody>
               {filteredInvites.length === 0 && (
                 <tr><td colSpan={7} className="text-center py-10 text-black/30">Tidak ada undangan</td></tr>
               )}
-              {filteredInvites.map(i => (
-                <tr key={i.id} className={!i.is_active ? 'opacity-40' : ''}>
-                  <td className="font-medium text-sm">{i.full_name}</td>
-                  <td className="text-xs text-black/60">{i.email}</td>
-                  <td className="text-xs">
-                    {i.unit_kerja
-                      ? <span>{i.unit_kerja.nama}</span>
-                      : <span className="text-black/25">—</span>}
-                  </td>
-                  <td><span className={`badge text-[11px] ${roleBadge(i.role)}`}>{roleLabel(i.role)}</span></td>
-                  <td>
-                    {i.accepted_at ? (
-                      <span className="badge bg-risk-low text-risk-low-text border-risk-low-text/20">Diterima</span>
-                    ) : i.is_active ? (
-                      <span className="flex items-center gap-1 text-xs text-brand-amber font-medium">
-                        <Clock size={11} /> Menunggu login
-                      </span>
-                    ) : (
-                      <span className="badge bg-black/5 text-black/40 border-black/10">Dibatalkan</span>
-                    )}
-                  </td>
-                  <td className="text-xs text-black/40">
-                    {new Date(i.invited_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                  </td>
-                  <td>
-                    {!i.accepted_at && i.is_active && (
-                      <button onClick={() => cancelInvite(i)} className="btn-ghost py-1 px-2 text-xs gap-1 text-red-500">
-                        <X size={11} /> Batalkan
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {filteredInvites.map(i => {
+                const roleConfig = ROLES[i.role as AvrRole] ?? ROLES.viewer
+                return (
+                  <tr key={i.id} className={!i.is_active ? 'opacity-40' : ''}>
+                    <td className="font-medium text-sm">{i.full_name}</td>
+                    <td className="text-xs text-black/60">{i.email}</td>
+                    <td className="text-xs">{i.unit_kerja ? i.unit_kerja.nama : <span className="text-black/25">—</span>}</td>
+                    <td><span className={`badge text-[11px] ${roleConfig.color}`}>{roleConfig.label}</span></td>
+                    <td>
+                      {i.accepted_at
+                        ? <span className="badge bg-risk-low text-risk-low-text border-risk-low-text/20">Diterima</span>
+                        : i.is_active
+                        ? <span className="flex items-center gap-1 text-xs text-brand-amber font-medium"><Clock size={11} /> Menunggu login</span>
+                        : <span className="badge bg-black/5 text-black/40 border-black/10">Dibatalkan</span>}
+                    </td>
+                    <td className="text-xs text-black/40">
+                      {new Date(i.invited_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td>
+                      {!i.accepted_at && i.is_active && (
+                        <button onClick={() => cancelInvite(i)} className="btn-ghost py-1 px-2 text-xs gap-1 text-red-500">
+                          <X size={11} /> Batalkan
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -425,13 +345,13 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
               <div>
                 <label className="label">Level Akses <span className="text-red-400">*</span></label>
                 <div className="space-y-2">
-                  {ROLES.map(r => (
-                    <label key={r.value} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${invRole === r.value ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
-                      <input type="radio" name="inv-role" value={r.value} checked={invRole === r.value}
-                        onChange={() => setInvRole(r.value)} className="accent-brand-blue mt-0.5 shrink-0" />
+                  {ROLE_LIST.map(r => (
+                    <label key={r} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${invRole === r ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
+                      <input type="radio" name="inv-role" value={r} checked={invRole === r}
+                        onChange={() => setInvRole(r)} className="accent-brand-blue mt-0.5 shrink-0" />
                       <div>
-                        <p className="text-sm font-medium">{r.label}</p>
-                        <p className="text-xs text-black/40">{r.desc}</p>
+                        <p className="text-sm font-medium">{ROLES[r].label}</p>
+                        <p className="text-xs text-black/40">{ROLES[r].desc}</p>
                       </div>
                     </label>
                   ))}
@@ -486,15 +406,15 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
                   </div>
                 )}
                 <div className="space-y-2">
-                  {ROLES.map(r => (
-                    <label key={r.value} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${editing.id === currentUserId ? 'opacity-50 cursor-not-allowed' : ''} ${editRole === r.value ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
-                      <input type="radio" name="edit-role" value={r.value} checked={editRole === r.value}
-                        onChange={() => editing.id !== currentUserId && setEditRole(r.value)}
+                  {ROLE_LIST.map(r => (
+                    <label key={r} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${editing.id === currentUserId ? 'opacity-50 cursor-not-allowed' : ''} ${editRole === r ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
+                      <input type="radio" name="edit-role" value={r} checked={editRole === r}
+                        onChange={() => editing.id !== currentUserId && setEditRole(r)}
                         disabled={editing.id === currentUserId}
                         className="accent-brand-blue mt-0.5 shrink-0" />
                       <div>
-                        <p className="text-sm font-medium">{r.label}</p>
-                        <p className="text-xs text-black/40">{r.desc}</p>
+                        <p className="text-sm font-medium">{ROLES[r].label}</p>
+                        <p className="text-xs text-black/40">{ROLES[r].desc}</p>
                       </div>
                     </label>
                   ))}
