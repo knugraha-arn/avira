@@ -21,12 +21,11 @@ interface User {
   email: string
   role: string
   job_title: string | null
-  department: string | null
   is_active: boolean
   last_login_at: string | null
   invited_at: string | null
   unit_kerja_id: string | null
-  unit_kerja?: { id: string; kode: string; nama: string } | null
+  unit_kerja?: UnitKerja | null
   inviter?: { full_name: string } | null
 }
 
@@ -37,24 +36,24 @@ interface Props {
 }
 
 export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Props) {
-  const [users, setUsers]         = useState<User[]>(initialUsers)
+  const [users, setUsers]           = useState<User[]>(initialUsers)
   const [showInvite, setShowInvite] = useState(false)
-  const [editing, setEditing]     = useState<User | null>(null)
-  const [saving, setSaving]       = useState(false)
-  const [search, setSearch]       = useState('')
+  const [editing, setEditing]       = useState<User | null>(null)
+  const [saving, setSaving]         = useState(false)
+  const [search, setSearch]         = useState('')
 
-  // Invite form
-  const [invEmail, setInvEmail]     = useState('')
-  const [invName, setInvName]       = useState('')
-  const [invRole, setInvRole]       = useState('viewer')
-  const [invUK, setInvUK]           = useState('')
-  const [invTitle, setInvTitle]     = useState('')
+  const [invEmail, setInvEmail] = useState('')
+  const [invName, setInvName]   = useState('')
+  const [invRole, setInvRole]   = useState('viewer')
+  const [invUK, setInvUK]       = useState('')
+  const [invTitle, setInvTitle] = useState('')
 
-  // Edit form
-  const [editRole, setEditRole]     = useState('')
-  const [editUK, setEditUK]         = useState('')
-  const [editTitle, setEditTitle]   = useState('')
-  const [editName, setEditName]     = useState('')
+  const [editRole, setEditRole]   = useState('')
+  const [editUK, setEditUK]       = useState('')
+  const [editTitle, setEditTitle] = useState('')
+  const [editName, setEditName]   = useState('')
+
+  const ukMap = new Map(unitKerjaList.map(uk => [uk.id, uk]))
 
   const filtered = users.filter(u =>
     u.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -68,32 +67,30 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
       toast.error('Hanya email @arranetwork.com yang diizinkan'); return
     }
     if (!invName.trim()) { toast.error('Nama wajib diisi'); return }
-
-    // Check duplicate
-    if (users.some(u => u.email === invEmail.trim())) {
+    if (users.some(u => u.email === invEmail.trim().toLowerCase())) {
       toast.error('Email ini sudah terdaftar'); return
     }
 
     setSaving(true)
     const supabase = createClient()
-
-    // Generate a placeholder UUID for invited user (will be replaced on first login)
     const placeholderId = crypto.randomUUID()
+
+    const payload = {
+      id:            placeholderId,
+      full_name:     invName.trim(),
+      email:         invEmail.trim().toLowerCase(),
+      role:          invRole,
+      job_title:     invTitle || null,
+      unit_kerja_id: invUK || null,
+      invited_by:    currentUserId,
+      invited_at:    new Date().toISOString(),
+      is_active:     true,
+    }
 
     const { data, error } = await supabase
       .from('avr_user_profiles')
-      .insert({
-        id:           placeholderId,
-        full_name:    invName.trim(),
-        email:        invEmail.trim().toLowerCase(),
-        role:         invRole,
-        job_title:    invTitle || null,
-        unit_kerja_id: invUK || null,
-        invited_by:   currentUserId,
-        invited_at:   new Date().toISOString(),
-        is_active:    true,
-      })
-      .select(`*, unit_kerja:avr_unit_kerja(id, kode, nama)`)
+      .insert(payload)
+      .select('*')
       .single()
 
     if (error) {
@@ -101,7 +98,13 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
       setSaving(false); return
     }
 
-    setUsers(u => [...u, data as User])
+    // Merge unit_kerja manually
+    const newUser: User = {
+      ...data,
+      unit_kerja: invUK ? ukMap.get(invUK) ?? null : null,
+    }
+
+    setUsers(u => [...u, newUser])
     toast.success(`${invName} berhasil diundang sebagai ${invRole}`)
     setShowInvite(false)
     setInvEmail(''); setInvName(''); setInvRole('viewer'); setInvUK(''); setInvTitle('')
@@ -120,6 +123,7 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
     if (!editing) return
     setSaving(true)
     const supabase = createClient()
+
     const { data, error } = await supabase
       .from('avr_user_profiles')
       .update({
@@ -129,19 +133,26 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
         job_title:     editTitle || null,
       })
       .eq('id', editing.id)
-      .select(`*, unit_kerja:avr_unit_kerja(id, kode, nama)`)
+      .select('*')
       .single()
 
     if (error) { toast.error(error.message); setSaving(false); return }
-    setUsers(u => u.map(x => x.id === editing.id ? data as User : x))
+
+    const updated: User = {
+      ...data,
+      unit_kerja: editUK ? ukMap.get(editUK) ?? null : null,
+      inviter:    editing.inviter,
+    }
+
+    setUsers(u => u.map(x => x.id === editing.id ? updated : x))
     toast.success('Data pengguna diperbarui')
     setEditing(null); setSaving(false)
   }
 
   async function toggleActive(u: User) {
-    if (u.id === currentUserId) { toast.error('Tidak bisa menonaktifkan akun sendiri'); return }
-
-    // Check if user is risk owner of active risks
+    if (u.id === currentUserId) {
+      toast.error('Tidak bisa menonaktifkan akun sendiri'); return
+    }
     if (u.is_active) {
       const supabase = createClient()
       const { count } = await supabase
@@ -149,37 +160,29 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
         .select('*', { count: 'exact', head: true })
         .eq('risk_owner_id', u.id)
         .neq('status', 'Closed')
-
       if (count && count > 0) {
-        toast.warning(`${u.full_name} masih menjadi Risk Owner di ${count} risiko aktif. Pastikan sudah di-reassign sebelum menonaktifkan.`, { duration: 6000 })
+        toast.warning(`${u.full_name} masih menjadi Risk Owner di ${count} risiko aktif. Pastikan sudah di-reassign dulu.`, { duration: 6000 })
         return
       }
     }
-
     const supabase = createClient()
     const { error } = await supabase
       .from('avr_user_profiles')
       .update({ is_active: !u.is_active })
       .eq('id', u.id)
-
     if (error) { toast.error(error.message); return }
     setUsers(us => us.map(x => x.id === u.id ? { ...x, is_active: !x.is_active } : x))
     toast.success(u.is_active ? `${u.full_name} dinonaktifkan` : `${u.full_name} diaktifkan`)
   }
 
-  const roleBadge = (role: string) => {
-    const map: Record<string, string> = {
-      admin:        'bg-risk-extreme text-risk-extreme-text border-red-700/30',
-      risk_manager: 'bg-blue-50 text-brand-blue border-brand-blue/20',
-      viewer:       'bg-black/5 text-black/50 border-black/10',
-    }
-    return map[role] ?? map.viewer
-  }
+  const roleBadge = (role: string) => ({
+    admin:        'bg-risk-extreme text-risk-extreme-text border-red-700/30',
+    risk_manager: 'bg-blue-50 text-brand-blue border-brand-blue/20',
+    viewer:       'bg-black/5 text-black/50 border-black/10',
+  }[role] ?? 'bg-black/5 text-black/50 border-black/10')
 
   return (
     <div className="space-y-5">
-
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <span className="eyebrow">Admin</span>
@@ -193,13 +196,11 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
         </button>
       </div>
 
-      {/* Search */}
       <div className="card py-3">
         <input className="input" placeholder="Cari nama, email, atau unit kerja..."
           value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* Table */}
       <div className="card p-0 overflow-hidden">
         <table className="table-base">
           <thead>
@@ -235,9 +236,9 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
                 </td>
                 <td className="text-xs text-black/60">{u.email}</td>
                 <td className="text-xs">
-                  {u.unit_kerja ? (
-                    <span>{u.unit_kerja.nama} <span className="text-black/30">({u.unit_kerja.kode})</span></span>
-                  ) : <span className="text-black/25">—</span>}
+                  {u.unit_kerja
+                    ? <span>{u.unit_kerja.nama} <span className="text-black/30">({u.unit_kerja.kode})</span></span>
+                    : <span className="text-black/25">—</span>}
                 </td>
                 <td className="text-xs text-black/60">{u.job_title ?? '—'}</td>
                 <td>
@@ -262,9 +263,7 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
                     </button>
                     {u.id !== currentUserId && (
                       <button onClick={() => toggleActive(u)} className="btn-ghost py-1 px-2 text-xs gap-1">
-                        {u.is_active
-                          ? <ToggleRight size={13} className="text-brand-blue" />
-                          : <ToggleLeft size={13} />}
+                        {u.is_active ? <ToggleRight size={13} className="text-brand-blue" /> : <ToggleLeft size={13} />}
                         {u.is_active ? 'Nonaktifkan' : 'Aktifkan'}
                       </button>
                     )}
@@ -276,18 +275,17 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
         </table>
       </div>
 
-      {/* ── Invite Modal ── */}
+      {/* Invite Modal */}
       {showInvite && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3>Undang Pengguna</h3>
-                <p className="text-xs text-black/40 mt-0.5">Pengguna akan aktif saat pertama kali login dengan Google</p>
+                <p className="text-xs text-black/40 mt-0.5">Aktif saat pertama kali login dengan Google</p>
               </div>
               <button onClick={() => setShowInvite(false)} className="btn-ghost p-1"><X size={16} /></button>
             </div>
-
             <div className="space-y-4">
               <div>
                 <label className="label">Email <span className="text-red-400">*</span></label>
@@ -297,13 +295,11 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
                     value={invEmail} onChange={e => setInvEmail(e.target.value)} />
                 </div>
               </div>
-
               <div>
                 <label className="label">Nama Lengkap <span className="text-red-400">*</span></label>
                 <input className="input" placeholder="Nama sesuai akun Google"
                   value={invName} onChange={e => setInvName(e.target.value)} />
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Unit Kerja</label>
@@ -318,7 +314,6 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
                     value={invTitle} onChange={e => setInvTitle(e.target.value)} />
                 </div>
               </div>
-
               <div>
                 <label className="label">Level Akses <span className="text-red-400">*</span></label>
                 <div className="space-y-2">
@@ -335,7 +330,6 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
                 </div>
               </div>
             </div>
-
             <div className="flex gap-3 mt-6">
               <button onClick={handleInvite} className="btn-primary flex-1 justify-center gap-1.5" disabled={saving}>
                 <UserCheck size={15} /> {saving ? 'Mengundang...' : 'Undang Pengguna'}
@@ -346,7 +340,7 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
         </div>
       )}
 
-      {/* ── Edit Modal ── */}
+      {/* Edit Modal */}
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
@@ -357,13 +351,11 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
               </div>
               <button onClick={() => setEditing(null)} className="btn-ghost p-1"><X size={16} /></button>
             </div>
-
             <div className="space-y-4">
               <div>
                 <label className="label">Nama Lengkap</label>
                 <input className="input" value={editName} onChange={e => setEditName(e.target.value)} />
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">Unit Kerja</label>
@@ -374,23 +366,20 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
                 </div>
                 <div>
                   <label className="label">Jabatan</label>
-                  <input className="input" placeholder="Jabatan" value={editTitle} onChange={e => setEditTitle(e.target.value)} />
+                  <input className="input" value={editTitle} onChange={e => setEditTitle(e.target.value)} />
                 </div>
               </div>
-
               <div>
                 <label className="label">Level Akses</label>
                 {editing.id === currentUserId && (
                   <div className="flex items-center gap-2 p-2 rounded-lg bg-brand-amber/10 border border-brand-amber/20 mb-2">
                     <AlertTriangle size={12} className="text-[#7A4C00] shrink-0" />
-                    <p className="text-xs text-[#7A4C00]">Anda tidak bisa mengubah role akun sendiri</p>
+                    <p className="text-xs text-[#7A4C00]">Tidak bisa mengubah role akun sendiri</p>
                   </div>
                 )}
                 <div className="space-y-2">
                   {ROLES.map(r => (
-                    <label key={r.value} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-                      editing.id === currentUserId ? 'opacity-50 cursor-not-allowed' : ''
-                    } ${editRole === r.value ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
+                    <label key={r.value} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${editing.id === currentUserId ? 'opacity-50 cursor-not-allowed' : ''} ${editRole === r.value ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
                       <input type="radio" name="edit-role" value={r.value} checked={editRole === r.value}
                         onChange={() => editing.id !== currentUserId && setEditRole(r.value)}
                         disabled={editing.id === currentUserId}
@@ -404,7 +393,6 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
                 </div>
               </div>
             </div>
-
             <div className="flex gap-3 mt-6">
               <button onClick={handleSaveEdit} className="btn-primary flex-1 justify-center" disabled={saving}>
                 {saving ? 'Menyimpan...' : 'Simpan'}
@@ -414,7 +402,6 @@ export function UsersClient({ initialUsers, unitKerjaList, currentUserId }: Prop
           </div>
         </div>
       )}
-
     </div>
   )
 }
