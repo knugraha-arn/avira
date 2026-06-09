@@ -5,7 +5,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShieldAlert, ClipboardList,
   Bell, Users, LogOut, ShieldCheck, Building2,
-  Handshake, Sparkles,
+  Handshake, Sparkles, FileText,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -17,6 +17,7 @@ const NAV = [
   { href: '/risks',                   label: 'Risk Register',  icon: ShieldAlert },
   { href: '/risks?filter=review_due', label: 'Review',         icon: ClipboardList },
   { href: '/notifications',           label: 'Notifikasi',     icon: Bell },
+  { href: '/reports',                 label: 'Laporan',        icon: FileText },
 ]
 
 const ADMIN_NAV = [
@@ -37,28 +38,18 @@ export function Sidebar({ profile, unreadCount = 0 }: Props) {
 
   function isActive(href: string): boolean {
     const [hrefPath, hrefQuery] = href.split('?')
-    
-    // Exact path match required first
     if (pathname !== hrefPath) {
-      // Allow sub-paths only for non-risks routes
       if (hrefPath !== '/risks' && pathname.startsWith(hrefPath + '/')) return true
       return false
     }
-
-    // Same path — differentiate by query params
     if (hrefQuery) {
-      // This nav item has query params — only active if current URL has same params
       const params = new URLSearchParams(hrefQuery)
       for (const [key, val] of params.entries()) {
         if (searchParams.get(key) !== val) return false
       }
       return true
     } else {
-      // This nav item has NO query params — only active if current URL also has no relevant filter
-      // Exception: sub-paths like /risks/[id] should still highlight Risk Register
-      if (hrefPath === '/risks') {
-        return !searchParams.has('filter')
-      }
+      if (hrefPath === '/risks') return !searchParams.has('filter')
       return true
     }
   }
