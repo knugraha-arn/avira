@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { canAdmin } from '@/lib/roles'
 import type { AvrUserProfile } from '@/types'
 
 export default async function UsersLayout({ children }: { children: React.ReactNode }) {
@@ -10,7 +11,7 @@ export default async function UsersLayout({ children }: { children: React.ReactN
 
   const { data: profile } = await supabase
     .from('avr_user_profiles').select('*').eq('id', user.id).single()
-  if (!profile || profile.role !== 'admin') redirect('/dashboard')
+  if (!profile || !canAdmin(profile.role)) redirect('/dashboard')
 
   const { count: unreadCount } = await supabase
     .from('avr_notifications')

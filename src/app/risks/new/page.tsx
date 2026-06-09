@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { RiskForm } from '@/components/risk/RiskForm'
+import { canWrite } from '@/lib/roles'
 
 export const metadata = { title: 'Tambah Risiko' }
 
@@ -17,9 +18,7 @@ export default async function NewRiskPage() {
     .eq('id', user.id)
     .single()
 
-  if (!profile || !['admin', 'risk_manager'].includes(profile.role)) {
-    redirect('/risks')
-  }
+  if (!profile || !canWrite(profile.role)) redirect('/risks')
 
   const [{ data: unitKerjaList }, { data: users }] = await Promise.all([
     supabase.from('avr_unit_kerja').select('id, kode, nama').eq('is_active', true).order('nama'),
@@ -36,7 +35,6 @@ export default async function NewRiskPage() {
         <h1 className="mt-1">Tambah Risiko Baru</h1>
         <p className="text-sm text-black/50 mt-0.5">Isi seluruh informasi risiko sesuai hasil identifikasi</p>
       </div>
-
       <RiskForm
         unitKerjaList={unitKerjaList ?? []}
         users={users ?? []}
