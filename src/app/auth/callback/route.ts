@@ -1,32 +1,28 @@
-import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const code = searchParams.get('code')
+  const { origin, searchParams } = new URL(request.url)
 
+  // Handle PKCE code flow (fallback)
+  const code = searchParams.get('code')
   if (code) {
+    const { createClient } = await import('@/lib/supabase/server')
     const supabase = await createClient()
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
-      // Return HTML page that redirects after cookies are set
-      const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Redirecting...</title>
-</head>
-<body>
-  <script>window.location.replace('/dashboard')</script>
-  <noscript><meta http-equiv="refresh" content="0;url=/dashboard"></noscript>
-</body>
-</html>`
-      return new NextResponse(html, {
-        status: 200,
-        headers: { 'Content-Type': 'text/html' },
-      })
+      return NextResponse.redirect(`${origin}/dashboard`)
     }
   }
 
-  return NextResponse.redirect('https://avira.arranetwork.com/auth/login')
+  // Implicit flow — token is in hash fragment (#access_token=...)
+  // Hash fragments are not sent to server, so redirect to a client page
+  // that reads the hash and sets the session
+  const error = searchParams.get('error')
+  if (error) {
+    return NextResponse.redirect(`${origin}/auth/login?error=${error}`)
+  }
+
+  // For implicit flow, redirect to dashboard
+  // The Supabase client will handle the hash fragment automatically
+  return NextResponse.redirect(`${origin}/dashboard`)
 }
