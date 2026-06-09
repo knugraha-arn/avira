@@ -14,14 +14,22 @@ export default async function RiskGeneratorLayout({ children }: { children: Reac
     .from('avr_user_profiles').select('*').eq('id', user.id).single()
   if (!profile) redirect('/auth/login')
 
+  // Admin only
+  if (profile.role !== 'admin') redirect('/dashboard')
+
   const { count: unreadCount } = await supabase
     .from('avr_notifications')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', user.id).eq('is_read', false)
 
+  const { count: libraryCount } = await supabase
+    .from('avr_risk_library')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'pending')
+
   return (
     <div className="flex min-h-screen bg-brand-gray">
-      <Sidebar profile={profile as AvrUserProfile} unreadCount={unreadCount ?? 0} />
+      <Sidebar profile={profile as AvrUserProfile} unreadCount={unreadCount ?? 0} libraryCount={libraryCount ?? 0} />
       <main className="flex-1 ml-56 min-w-0">
         <div className="max-w-4xl mx-auto px-6 py-6">{children}</div>
       </main>

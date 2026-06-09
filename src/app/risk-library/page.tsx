@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { RiskLibraryClient } from './RiskLibraryClient'
 import type { AvrUserProfile } from '@/types'
-import { canWrite } from '@/lib/roles'
 
 export const metadata = { title: 'Risk Library' }
 export const dynamic  = 'force-dynamic'
@@ -17,8 +16,8 @@ export default async function RiskLibraryPage() {
     .from('avr_user_profiles').select('*').eq('id', user.id).single()
   if (!profile) redirect('/auth/login')
 
-  // Only admin, risk_manager, auditor
-  if (!['admin', 'risk_manager', 'auditor'].includes(profile.role)) redirect('/dashboard')
+  // Admin only
+  if (profile.role !== 'admin') redirect('/dashboard')
 
   const { data: items } = await supabase
     .from('avr_risk_library')
@@ -30,14 +29,19 @@ export default async function RiskLibraryPage() {
     .select('*', { count: 'exact', head: true })
     .eq('user_id', user.id).eq('is_read', false)
 
+  const { count: libraryCount } = await supabase
+    .from('avr_risk_library')
+    .select('*', { count: 'exact', head: true })
+    .eq('status', 'pending')
+
   return (
     <div className="flex min-h-screen bg-brand-gray">
-      <Sidebar profile={profile as AvrUserProfile} unreadCount={unreadCount ?? 0} />
+      <Sidebar profile={profile as AvrUserProfile} unreadCount={unreadCount ?? 0} libraryCount={libraryCount ?? 0} />
       <main className="flex-1 ml-56 min-w-0">
         <div className="max-w-5xl mx-auto px-6 py-6">
           <RiskLibraryClient
             initialItems={items ?? []}
-            canWrite={canWrite(profile.role)}
+            canWrite={true}
             currentUserId={user.id}
           />
         </div>

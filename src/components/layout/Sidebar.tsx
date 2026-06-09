@@ -12,13 +12,13 @@ import { createClient } from '@/lib/supabase/client'
 import type { AvrUserProfile } from '@/types'
 
 const NAV = [
-  { href: '/dashboard',               label: 'Dashboard',      icon: LayoutDashboard },
-  { href: '/risk-generator',          label: 'Risk Generator', icon: Sparkles, highlight: true },
-  { href: '/risk-library',            label: 'Risk Library',   icon: BookMarked },
-  { href: '/risks',                   label: 'Risk Register',  icon: ShieldAlert },
-  { href: '/risks?filter=review_due', label: 'Review',         icon: ClipboardList },
-  { href: '/notifications',           label: 'Notifikasi',     icon: Bell },
-  { href: '/reports',                 label: 'Laporan',        icon: FileText },
+  { href: '/dashboard',               label: 'Dashboard',      icon: LayoutDashboard, roles: ['admin','risk_manager','auditor','viewer'] },
+  { href: '/risk-generator',          label: 'Risk Generator', icon: Sparkles,        roles: ['admin'], highlight: true },
+  { href: '/risk-library',            label: 'Risk Library',   icon: BookMarked,      roles: ['admin'] },
+  { href: '/risks',                   label: 'Risk Register',  icon: ShieldAlert,     roles: ['admin','risk_manager','auditor','viewer'] },
+  { href: '/risks?filter=review_due', label: 'Review',         icon: ClipboardList,   roles: ['admin','risk_manager'] },
+  { href: '/notifications',           label: 'Notifikasi',     icon: Bell,            roles: ['admin','risk_manager','auditor','viewer'] },
+  { href: '/reports',                 label: 'Laporan',        icon: FileText,        roles: ['admin','risk_manager','auditor'] },
 ]
 
 const ADMIN_NAV = [
@@ -63,13 +63,7 @@ export function Sidebar({ profile, unreadCount = 0, libraryCount = 0 }: Props) {
     router.refresh()
   }
 
-  // Filter nav berdasarkan role
-  const visibleNav = NAV.filter(item => {
-    if (item.href === '/reports') return ['admin', 'risk_manager', 'auditor'].includes(profile.role)
-    if (item.href === '/risk-library') return ['admin', 'risk_manager', 'auditor'].includes(profile.role)
-    if (item.href === '/risk-generator') return ['admin', 'risk_manager'].includes(profile.role)
-    return true
-  })
+  const visibleNav = NAV.filter(item => item.roles.includes(profile.role))
 
   return (
     <aside className="fixed inset-y-0 left-0 w-56 bg-brand-navy flex flex-col z-30">

@@ -3,8 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Sparkles, ChevronRight, RotateCcw, Plus,
-  HelpCircle, Loader2, BookMarked, Check,
+  Sparkles, ChevronRight, RotateCcw, HelpCircle,
+  Loader2, BookMarked, Check, Cpu,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
@@ -44,6 +44,17 @@ interface GeneratedRisk {
 
 type Stage = 'input' | 'generating' | 'result' | 'saved'
 
+function resetState() {
+  return {
+    stage:    'input' as Stage,
+    risks:    [] as GeneratedRisk[],
+    selected: new Set<number>(),
+    deskripsi: '',
+    scope:    '',
+    fokus:    [] as string[],
+  }
+}
+
 export default function RiskGeneratorPage() {
   const router = useRouter()
 
@@ -56,6 +67,17 @@ export default function RiskGeneratorPage() {
   const [progress, setProgress]   = useState(0)
   const [stepIdx, setStepIdx]     = useState(0)
   const [saving, setSaving]       = useState(false)
+
+  function handleReset() {
+    setStage('input')
+    setRisks([])
+    setSelected(new Set())
+    setDeskripsi('')
+    setScope('')
+    setFokus([])
+    setProgress(0)
+    setStepIdx(0)
+  }
 
   function toggleFokus(f: string) {
     setFokus(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
@@ -99,7 +121,6 @@ export default function RiskGeneratorPage() {
       const parsed: GeneratedRisk[] = data.risks
       setRisks(parsed)
 
-      // Auto-select High dan Extreme
       const autoSelect = new Set<number>()
       parsed.forEach((r, i) => {
         if (['High', 'Extreme'].includes(r.klasifikasi)) autoSelect.add(i)
@@ -154,15 +175,21 @@ export default function RiskGeneratorPage() {
   return (
     <div className="space-y-6 max-w-4xl">
 
+      {/* Header */}
       <div>
-        <span className="eyebrow">AI-Powered</span>
+        <span className="eyebrow">AI-Powered · Admin Only</span>
         <h1 className="mt-1 flex items-center gap-2">
           <Sparkles size={22} className="text-brand-blue" />
           Risk Generator
         </h1>
         <p className="text-sm text-black/50 mt-0.5">
-          Ceritakan konteks Anda — AI mengidentifikasi potensi risiko, simpan ke Library, lalu proses satu per satu ke Risk Register
+          Ceritakan konteks — AI mengidentifikasi potensi risiko, simpan ke Library, lalu proses ke Risk Register
         </p>
+        {/* Model info */}
+        <div className="flex items-center gap-2 mt-2">
+          <Cpu size={12} className="text-black/30" />
+          <span className="text-xs text-black/30">Powered by <span className="font-medium text-black/50">Claude Haiku 4.5</span> (claude-haiku-4-5) · Anthropic</span>
+        </div>
       </div>
 
       {/* Input */}
@@ -180,6 +207,7 @@ export default function RiskGeneratorPage() {
                 ))}
               </div>
             </div>
+
             <div>
               <label className="label">Deskripsikan Konteks <span className="text-red-400">*</span></label>
               <textarea className="input min-h-[140px] resize-y text-sm leading-relaxed"
@@ -187,6 +215,7 @@ export default function RiskGeneratorPage() {
                 value={deskripsi} onChange={e => setDeskripsi(e.target.value)} />
               <p className="text-xs text-black/30 mt-1">{deskripsi.length} karakter</p>
             </div>
+
             <div>
               <label className="label">Fokus Risiko (opsional)</label>
               <div className="flex flex-wrap gap-2">
@@ -228,7 +257,8 @@ export default function RiskGeneratorPage() {
           </div>
           <div className="space-y-2 mb-6">
             <div className="w-full h-2 bg-black/6 rounded-full overflow-hidden">
-              <div className="h-full bg-brand-blue rounded-full transition-all duration-[2000ms] ease-out" style={{ width: `${progress}%` }} />
+              <div className="h-full bg-brand-blue rounded-full transition-all duration-[2000ms] ease-out"
+                style={{ width: `${progress}%` }} />
             </div>
             <div className="flex justify-between text-xs text-black/30">
               <span>Memproses konteks Anda</span>
@@ -261,7 +291,7 @@ export default function RiskGeneratorPage() {
               <span className="text-xs text-black/40">{selected.size} dipilih</span>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => { setStage('input'); setRisks([]) }} className="btn-ghost text-xs gap-1">
+              <button onClick={handleReset} className="btn-ghost text-xs gap-1">
                 <RotateCcw size={13} /> Generate Ulang
               </button>
               <button onClick={handleSaveToLibrary} disabled={selected.size === 0 || saving}
@@ -296,7 +326,7 @@ export default function RiskGeneratorPage() {
           })}
 
           <div className="flex items-center justify-between pt-2 pb-8">
-            <button onClick={() => { setStage('input'); setRisks([]) }} className="btn-secondary gap-1.5">
+            <button onClick={handleReset} className="btn-secondary gap-1.5">
               <RotateCcw size={14} /> Generate Ulang
             </button>
             <button onClick={handleSaveToLibrary} disabled={selected.size === 0 || saving} className="btn-primary gap-1.5">
@@ -323,8 +353,7 @@ export default function RiskGeneratorPage() {
             <button onClick={() => router.push('/risk-library')} className="btn-primary gap-1.5">
               <BookMarked size={15} /> Buka Risk Library
             </button>
-            <button onClick={() => { setStage('input'); setRisks([]); setDeskripsi(''); setScope(''); setFokus([]) }}
-              className="btn-secondary gap-1.5">
+            <button onClick={handleReset} className="btn-secondary gap-1.5">
               <Sparkles size={14} /> Generate Lagi
             </button>
           </div>
