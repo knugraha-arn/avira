@@ -11,15 +11,19 @@ export async function GET(request: Request) {
 
   const supabase = await createClient()
 
-  const [reviewResult, overdueResult] = await Promise.all([
+  const [reviewResult, overdueResult, expireResult, notifyExpireResult] = await Promise.all([
     supabase.rpc('avr_notify_review_due'),
     supabase.rpc('avr_notify_overdue_mitigation'),
+    supabase.rpc('avr_expire_risk_library'),
+    supabase.rpc('avr_notify_library_expiring'),
   ])
 
   return NextResponse.json({
-    ok: true,
+    ok:                 true,
     review_due:         reviewResult.error?.message ?? 'ok',
     overdue_mitigation: overdueResult.error?.message ?? 'ok',
+    expire_library:     expireResult.error?.message ?? 'ok',
+    notify_expiring:    notifyExpireResult.error?.message ?? 'ok',
     timestamp:          new Date().toISOString(),
   })
 }
