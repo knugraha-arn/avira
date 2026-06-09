@@ -5,7 +5,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShieldAlert, ClipboardList,
   Bell, Users, LogOut, ShieldCheck, Building2,
-  Handshake, Sparkles, FileText,
+  Handshake, Sparkles, FileText, BookMarked,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -14,6 +14,7 @@ import type { AvrUserProfile } from '@/types'
 const NAV = [
   { href: '/dashboard',               label: 'Dashboard',      icon: LayoutDashboard },
   { href: '/risk-generator',          label: 'Risk Generator', icon: Sparkles, highlight: true },
+  { href: '/risk-library',            label: 'Risk Library',   icon: BookMarked },
   { href: '/risks',                   label: 'Risk Register',  icon: ShieldAlert },
   { href: '/risks?filter=review_due', label: 'Review',         icon: ClipboardList },
   { href: '/notifications',           label: 'Notifikasi',     icon: Bell },
@@ -29,9 +30,10 @@ const ADMIN_NAV = [
 interface Props {
   profile: AvrUserProfile
   unreadCount?: number
+  libraryCount?: number
 }
 
-export function Sidebar({ profile, unreadCount = 0 }: Props) {
+export function Sidebar({ profile, unreadCount = 0, libraryCount = 0 }: Props) {
   const pathname     = usePathname()
   const searchParams = useSearchParams()
   const router       = useRouter()
@@ -61,6 +63,14 @@ export function Sidebar({ profile, unreadCount = 0 }: Props) {
     router.refresh()
   }
 
+  // Filter nav berdasarkan role
+  const visibleNav = NAV.filter(item => {
+    if (item.href === '/reports') return ['admin', 'risk_manager', 'auditor'].includes(profile.role)
+    if (item.href === '/risk-library') return ['admin', 'risk_manager', 'auditor'].includes(profile.role)
+    if (item.href === '/risk-generator') return ['admin', 'risk_manager'].includes(profile.role)
+    return true
+  })
+
   return (
     <aside className="fixed inset-y-0 left-0 w-56 bg-brand-navy flex flex-col z-30">
 
@@ -79,7 +89,7 @@ export function Sidebar({ profile, unreadCount = 0 }: Props) {
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {NAV.map(item => {
+        {visibleNav.map(item => {
           const active = isActive(item.href)
           return (
             <Link key={item.href} href={item.href}
@@ -94,6 +104,11 @@ export function Sidebar({ profile, unreadCount = 0 }: Props) {
               {item.href === '/notifications' && unreadCount > 0 && (
                 <span className="ml-auto bg-brand-lime text-brand-navy text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
                   {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+              {item.href === '/risk-library' && libraryCount > 0 && (
+                <span className="ml-auto bg-brand-blue text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  {libraryCount > 9 ? '9+' : libraryCount}
                 </span>
               )}
             </Link>

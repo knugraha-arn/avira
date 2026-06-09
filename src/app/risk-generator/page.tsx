@@ -4,11 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Sparkles, ChevronRight, RotateCcw, Plus,
-  HelpCircle, AlertTriangle, ArrowRight, Loader2,
+  HelpCircle, Loader2, BookMarked, Check,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { classificationBadge } from '@/lib/utils'
 import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
+import { createClient } from '@/lib/supabase/client'
 import type { AvrClassification } from '@/types'
 
 const SCOPE_OPTIONS = [
@@ -22,11 +22,11 @@ const FOKUS_OPTIONS = [
 ]
 
 const LOADING_STEPS = [
-  { label: 'Menganalisis konteks',      pct: 20 },
-  { label: 'Mengidentifikasi ancaman',  pct: 45 },
-  { label: 'Menilai likelihood & dampak', pct: 65 },
-  { label: 'Menyusun pertanyaan reflektif', pct: 82 },
-  { label: 'Memvalidasi terhadap ISO 27001', pct: 95 },
+  { label: 'Menganalisis konteks',             pct: 20 },
+  { label: 'Mengidentifikasi ancaman',          pct: 45 },
+  { label: 'Menilai likelihood & dampak',       pct: 65 },
+  { label: 'Menyusun pertanyaan reflektif',     pct: 82 },
+  { label: 'Memvalidasi terhadap ISO 27001',    pct: 95 },
 ]
 
 interface GeneratedRisk {
@@ -42,7 +42,7 @@ interface GeneratedRisk {
   treatment_saran: string
 }
 
-type Stage = 'input' | 'generating' | 'result'
+type Stage = 'input' | 'generating' | 'result' | 'saved'
 
 export default function RiskGeneratorPage() {
   const router = useRouter()
@@ -53,9 +53,9 @@ export default function RiskGeneratorPage() {
   const [fokus, setFokus]         = useState<string[]>([])
   const [risks, setRisks]         = useState<GeneratedRisk[]>([])
   const [selected, setSelected]   = useState<Set<number>>(new Set())
-  const [expanded, setExpanded]   = useState<number | null>(null)
   const [progress, setProgress]   = useState(0)
   const [stepIdx, setStepIdx]     = useState(0)
+  const [saving, setSaving]       = useState(false)
 
   function toggleFokus(f: string) {
     setFokus(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
@@ -77,7 +77,6 @@ export default function RiskGeneratorPage() {
     setRisks([])
     setSelected(new Set())
 
-    // Animate progress through steps while waiting for API
     let currentStep = 0
     const interval = setInterval(() => {
       if (currentStep < LOADING_STEPS.length - 1) {
@@ -93,30 +92,21 @@ export default function RiskGeneratorPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ scope, deskripsi, fokus }),
       })
-
       clearInterval(interval)
-
       const data = await res.json()
-
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Gagal mendapatkan respons dari AI')
-      }
+      if (!res.ok || data.error) throw new Error(data.error || 'Gagal mendapatkan respons')
 
       const parsed: GeneratedRisk[] = data.risks
       setRisks(parsed)
 
-      // Auto-select High and Extreme
+      // Auto-select High dan Extreme
       const autoSelect = new Set<number>()
       parsed.forEach((r, i) => {
         if (['High', 'Extreme'].includes(r.klasifikasi)) autoSelect.add(i)
       })
       setSelected(autoSelect)
-
-      // Complete progress bar then show results
       setProgress(100)
-      setStepIdx(LOADING_STEPS.length - 1)
-      setTimeout(() => setStage('result'), 500)
-
+      setTimeout(() => setStage('result'), 400)
     } catch (err) {
       clearInterval(interval)
       toast.error('Gagal menghubungi AI', { description: err instanceof Error ? err.message : '' })
@@ -124,23 +114,41 @@ export default function RiskGeneratorPage() {
     }
   }
 
-  function handleAddToRegister(idx: number) {
-    const risk = risks[idx]
-    const params = new URLSearchParams({
-      ai_judul:      risk.judul,
-      ai_kategori:   risk.kategori,
-      ai_deskripsi:  risk.deskripsi,
-      ai_likelihood: String(risk.likelihood),
-      ai_impact:     String(risk.impact),
-      ai_treatment:  risk.treatment_saran,
-      ai_generated:  '1',
-    })
-    router.push(`/risks/new?${params.toString()}`)
-  }
-
-  function handleAddSelected() {
+  async function handleSaveToLibrary() {
     if (selected.size === 0) { toast.error('Pilih minimal satu risiko'); return }
-    handleAddToRegister(Array.from(selected)[0])
+    setSaving(true)
+    const supabase = createClient()
+
+    const payload = Array.from(selected).map(i => {
+      const r = risks[i]
+      return {
+        ai_scope:                 scope || null,
+        ai_fokus:                 fokus.length > 0 ? fokus : null,
+        ai_context:               deskripsi,
+        judul:                    r.judul,
+        kategori:                 r.kategori,
+        deskripsi:                r.deskripsi,
+        mengapa_relevan:          r.mengapa_relevan,
+        pertanyaan_reflektif:     r.pertanyaan_reflektif,
+        likelihood:               r.likelihood,
+        impact:                   r.impact,
+        klasifikasi:              r.klasifikasi,
+        kontrol_yang_mungkin_ada: r.kontrol_yang_mungkin_ada,
+        treatment_saran:          r.treatment_saran,
+        status:                   'pending',
+      }
+    })
+
+    const { error } = await supabase.from('avr_risk_library').insert(payload)
+    if (error) {
+      toast.error('Gagal menyimpan ke Library', { description: error.message })
+      setSaving(false)
+      return
+    }
+
+    toast.success(`${selected.size} risiko disimpan ke Risk Library`)
+    setStage('saved')
+    setSaving(false)
   }
 
   return (
@@ -153,11 +161,11 @@ export default function RiskGeneratorPage() {
           Risk Generator
         </h1>
         <p className="text-sm text-black/50 mt-0.5">
-          Ceritakan konteks Anda — AI akan mengidentifikasi potensi risiko dan memancing Anda berpikir lebih kritis
+          Ceritakan konteks Anda — AI mengidentifikasi potensi risiko, simpan ke Library, lalu proses satu per satu ke Risk Register
         </p>
       </div>
 
-      {/* ── Input ── */}
+      {/* Input */}
       {stage === 'input' && (
         <div className="space-y-4">
           <div className="card space-y-5">
@@ -172,18 +180,13 @@ export default function RiskGeneratorPage() {
                 ))}
               </div>
             </div>
-
             <div>
               <label className="label">Deskripsikan Konteks <span className="text-red-400">*</span></label>
-              <textarea
-                className="input min-h-[140px] resize-y text-sm leading-relaxed"
+              <textarea className="input min-h-[140px] resize-y text-sm leading-relaxed"
                 placeholder={`Ceritakan secara bebas. Semakin detail, semakin relevan risiko yang dihasilkan.\n\nContoh: "Kami akan meluncurkan fitur pembayaran baru dalam 2 bulan. Tim developer 8 orang, sebagian remote. Integrasi dengan Midtrans dan BCA. Data transaksi di server on-premise. Belum ada penetration testing."`}
-                value={deskripsi}
-                onChange={e => setDeskripsi(e.target.value)}
-              />
+                value={deskripsi} onChange={e => setDeskripsi(e.target.value)} />
               <p className="text-xs text-black/30 mt-1">{deskripsi.length} karakter</p>
             </div>
-
             <div>
               <label className="label">Fokus Risiko (opsional)</label>
               <div className="flex flex-wrap gap-2">
@@ -200,20 +203,18 @@ export default function RiskGeneratorPage() {
           <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-brand-blue/15">
             <HelpCircle size={15} className="text-brand-blue shrink-0 mt-0.5" />
             <p className="text-xs text-brand-blue/80 leading-relaxed">
-              <strong>Cara kerja:</strong> AI menganalisis konteks Anda dan menghasilkan potensi risiko lengkap dengan pertanyaan reflektif. Pilih yang relevan, sesuaikan, lalu simpan ke Risk Register. Setiap risiko ditandai <em>AI-Generated</em> untuk keperluan audit ISO 27001.
+              <strong>Cara kerja:</strong> AI menghasilkan 5 potensi risiko. Pilih yang relevan → simpan ke <strong>Risk Library</strong> → dari Library, proses satu per satu ke Risk Register dengan form lengkap.
             </p>
           </div>
 
           <button onClick={handleGenerate} disabled={deskripsi.trim().length < 20}
             className="btn-primary px-6 py-2.5 gap-2 disabled:opacity-40">
-            <Sparkles size={16} />
-            Identifikasi Risiko
-            <ChevronRight size={15} />
+            <Sparkles size={16} /> Identifikasi Risiko <ChevronRight size={15} />
           </button>
         </div>
       )}
 
-      {/* ── Generating ── */}
+      {/* Generating */}
       {stage === 'generating' && (
         <div className="card">
           <div className="flex items-center gap-3 mb-6">
@@ -225,29 +226,21 @@ export default function RiskGeneratorPage() {
               <p className="text-xs text-black/40 mt-0.5">{LOADING_STEPS[stepIdx]?.label}</p>
             </div>
           </div>
-
-          {/* Progress bar */}
           <div className="space-y-2 mb-6">
             <div className="w-full h-2 bg-black/6 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-brand-blue rounded-full transition-all duration-[2000ms] ease-out"
-                style={{ width: `${progress}%` }}
-              />
+              <div className="h-full bg-brand-blue rounded-full transition-all duration-[2000ms] ease-out" style={{ width: `${progress}%` }} />
             </div>
             <div className="flex justify-between text-xs text-black/30">
               <span>Memproses konteks Anda</span>
               <span>{Math.round(progress)}%</span>
             </div>
           </div>
-
-          {/* Step indicators */}
           <div className="space-y-2">
             {LOADING_STEPS.map((step, i) => {
-              const done   = i < stepIdx
-              const active = i === stepIdx
+              const done = i < stepIdx; const active = i === stepIdx
               return (
-                <div key={step.label} className={`flex items-center gap-3 p-2.5 rounded-lg text-xs transition-all duration-500 ${done ? 'bg-risk-low text-risk-low-text' : active ? 'bg-blue-50 text-brand-blue' : 'text-black/25'}`}>
-                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 transition-all ${done ? 'bg-[#5A9E2F] text-white' : active ? 'bg-brand-blue text-white' : 'bg-black/8'}`}>
+                <div key={step.label} className={`flex items-center gap-3 p-2.5 rounded-lg text-xs transition-all ${done ? 'bg-risk-low text-risk-low-text' : active ? 'bg-blue-50 text-brand-blue' : 'text-black/25'}`}>
+                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${done ? 'bg-[#5A9E2F] text-white' : active ? 'bg-brand-blue text-white' : 'bg-black/8'}`}>
                     {done ? '✓' : i + 1}
                   </span>
                   {step.label}
@@ -258,7 +251,7 @@ export default function RiskGeneratorPage() {
         </div>
       )}
 
-      {/* ── Result ── */}
+      {/* Result */}
       {stage === 'result' && risks.length > 0 && (
         <div className="space-y-4">
           <div className="card py-3 flex items-center justify-between flex-wrap gap-3">
@@ -271,15 +264,16 @@ export default function RiskGeneratorPage() {
               <button onClick={() => { setStage('input'); setRisks([]) }} className="btn-ghost text-xs gap-1">
                 <RotateCcw size={13} /> Generate Ulang
               </button>
-              <button onClick={handleAddSelected} disabled={selected.size === 0} className="btn-primary text-xs gap-1">
-                <Plus size={13} /> Tambah {selected.size > 0 ? `(${selected.size})` : ''} ke Register
+              <button onClick={handleSaveToLibrary} disabled={selected.size === 0 || saving}
+                className="btn-primary text-xs gap-1">
+                <BookMarked size={13} />
+                {saving ? 'Menyimpan...' : `Simpan ${selected.size > 0 ? `(${selected.size})` : ''} ke Library`}
               </button>
             </div>
           </div>
 
           {risks.map((risk, i) => {
             const isSelected = selected.has(i)
-            const isExpanded = expanded === i
             return (
               <div key={i} className={`rounded-lg border transition-all bg-white ${isSelected ? 'border-brand-blue shadow-card-hover' : 'border-black/8 shadow-card'}`}>
                 <div className="p-4 flex items-start gap-3">
@@ -296,47 +290,7 @@ export default function RiskGeneratorPage() {
                     <p className="font-semibold text-brand-navy text-sm leading-snug">{risk.judul}</p>
                     <p className="text-xs text-black/50 mt-1 leading-relaxed">{risk.mengapa_relevan}</p>
                   </div>
-                  <button type="button" onClick={() => setExpanded(isExpanded ? null : i)}
-                    className="btn-ghost py-1 px-2 text-xs shrink-0">
-                    {isExpanded ? 'Tutup' : 'Detail'}
-                  </button>
                 </div>
-
-                {isExpanded && (
-                  <div className="border-t border-black/5 px-4 pb-4 pt-3 space-y-4">
-                    <div>
-                      <p className="text-xs font-semibold text-black/40 uppercase tracking-wide mb-1">Deskripsi</p>
-                      <p className="text-sm text-black/70 leading-relaxed">{risk.deskripsi}</p>
-                    </div>
-                    <div className="bg-brand-amber/10 rounded-lg p-3 border border-brand-amber/20">
-                      <div className="flex items-center gap-2 mb-2">
-                        <AlertTriangle size={13} className="text-[#7A4C00]" />
-                        <p className="text-xs font-semibold text-[#7A4C00] uppercase tracking-wide">Pertanyaan untuk Anda</p>
-                      </div>
-                      <ul className="space-y-2">
-                        {risk.pertanyaan_reflektif.map((q, qi) => (
-                          <li key={qi} className="flex items-start gap-2 text-sm text-[#7A4C00]">
-                            <span className="font-bold shrink-0">{qi + 1}.</span>
-                            <span className="leading-relaxed">{q}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="bg-brand-gray rounded-lg p-3">
-                        <p className="text-xs font-semibold text-black/40 uppercase tracking-wide mb-1">Kontrol yang Mungkin Sudah Ada</p>
-                        <p className="text-xs text-black/60 leading-relaxed">{risk.kontrol_yang_mungkin_ada}</p>
-                      </div>
-                      <div className="bg-brand-gray rounded-lg p-3">
-                        <p className="text-xs font-semibold text-black/40 uppercase tracking-wide mb-1">Saran Treatment</p>
-                        <span className="text-xs font-medium text-brand-blue">{risk.treatment_saran}</span>
-                      </div>
-                    </div>
-                    <button onClick={() => handleAddToRegister(i)} className="btn-primary text-xs gap-1.5 w-full justify-center py-2">
-                      <Plus size={13} /> Tambah Risiko Ini ke Register <ArrowRight size={13} />
-                    </button>
-                  </div>
-                )}
               </div>
             )
           })}
@@ -345,8 +299,33 @@ export default function RiskGeneratorPage() {
             <button onClick={() => { setStage('input'); setRisks([]) }} className="btn-secondary gap-1.5">
               <RotateCcw size={14} /> Generate Ulang
             </button>
-            <button onClick={handleAddSelected} disabled={selected.size === 0} className="btn-primary gap-1.5">
-              <Plus size={15} /> Tambah {selected.size} Risiko Terpilih ke Register
+            <button onClick={handleSaveToLibrary} disabled={selected.size === 0 || saving} className="btn-primary gap-1.5">
+              <BookMarked size={15} />
+              {saving ? 'Menyimpan...' : `Simpan ${selected.size} Risiko ke Library`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Saved */}
+      {stage === 'saved' && (
+        <div className="card text-center py-12 space-y-4">
+          <div className="w-14 h-14 rounded-full bg-risk-low flex items-center justify-center mx-auto">
+            <Check size={24} className="text-risk-low-text" />
+          </div>
+          <div>
+            <p className="font-semibold text-brand-navy text-lg">Tersimpan ke Risk Library</p>
+            <p className="text-sm text-black/50 mt-1">
+              Risiko siap diproses ke Risk Register dari halaman Risk Library
+            </p>
+          </div>
+          <div className="flex gap-3 justify-center pt-2">
+            <button onClick={() => router.push('/risk-library')} className="btn-primary gap-1.5">
+              <BookMarked size={15} /> Buka Risk Library
+            </button>
+            <button onClick={() => { setStage('input'); setRisks([]); setDeskripsi(''); setScope(''); setFokus([]) }}
+              className="btn-secondary gap-1.5">
+              <Sparkles size={14} /> Generate Lagi
             </button>
           </div>
         </div>
