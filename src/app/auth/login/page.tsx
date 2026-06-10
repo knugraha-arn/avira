@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ShieldCheck, ShieldOff } from 'lucide-react'
@@ -13,6 +13,14 @@ const FEATURES = [
 ]
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <LoginContent />
+    </Suspense>
+  )
+}
+
+function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
   const searchParams          = useSearchParams()
@@ -79,7 +87,6 @@ export default function LoginPage() {
           <h2 className="text-2xl font-semibold text-brand-navy">Selamat datang</h2>
           <p className="text-black/40 text-sm mt-1 mb-8">Masuk menggunakan akun Google Arranet kamu untuk melanjutkan.</p>
 
-          {/* No access message */}
           {noAccess && (
             <div className="mb-6 flex items-start gap-3 rounded-lg border border-brand-amber/30 bg-brand-amber/8 px-4 py-3.5">
               <ShieldOff size={16} className="text-[#7A4C00] shrink-0 mt-0.5" />
@@ -90,7 +97,6 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Auth error */}
           {error && (
             <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
           )}
