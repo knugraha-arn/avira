@@ -12,41 +12,25 @@ import { ROLES, type AvrRole } from '@/lib/roles'
 const ROLE_LIST: AvrRole[] = ['admin', 'risk_manager', 'auditor', 'viewer']
 
 interface UnitKerja { id: string; kode: string; nama: string }
-
 interface User {
-  id: string
-  full_name: string
-  email: string
-  role: string
-  job_title: string | null
-  is_active: boolean
-  last_login_at: string | null
-  invited_at: string | null
-  unit_kerja_id: string | null
-  unit_kerja?: UnitKerja | null
+  id: string; full_name: string; email: string; role: string
+  job_title: string | null; is_active: boolean
+  last_login_at: string | null; invited_at: string | null
+  unit_kerja_id: string | null; unit_kerja?: UnitKerja | null
 }
-
 interface Invite {
-  id: string
-  email: string
-  full_name: string
-  role: string
-  job_title: string | null
-  unit_kerja_id: string | null
-  invited_at: string
-  accepted_at: string | null
-  is_active: boolean
+  id: string; email: string; full_name: string; role: string
+  job_title: string | null; unit_kerja_id: string | null
+  invited_at: string; accepted_at: string | null; is_active: boolean
   unit_kerja?: UnitKerja | null
 }
-
 interface Props {
-  initialUsers: User[]
-  initialInvites: Invite[]
-  unitKerjaList: UnitKerja[]
-  currentUserId: string
+  initialUsers: User[]; initialInvites: Invite[]
+  unitKerjaList: UnitKerja[]; currentUserId: string
+  currentUserName: string
 }
 
-export function UsersClient({ initialUsers, initialInvites, unitKerjaList, currentUserId }: Props) {
+export function UsersClient({ initialUsers, initialInvites, unitKerjaList, currentUserId, currentUserName }: Props) {
   const [users, setUsers]           = useState<User[]>(initialUsers)
   const [invites, setInvites]       = useState<Invite[]>(initialInvites)
   const [showInvite, setShowInvite] = useState(false)
@@ -60,47 +44,29 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
   const [invRole, setInvRole]   = useState<AvrRole>('viewer')
   const [invUK, setInvUK]       = useState('')
   const [invTitle, setInvTitle] = useState('')
-
   const [editRole, setEditRole]   = useState('')
   const [editUK, setEditUK]       = useState('')
   const [editTitle, setEditTitle] = useState('')
   const [editName, setEditName]   = useState('')
 
   const ukMap = new Map(unitKerjaList.map(uk => [uk.id, uk]))
+  const filteredUsers   = users.filter(u => u.full_name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()) || (u.unit_kerja?.nama ?? '').toLowerCase().includes(search.toLowerCase()))
+  const filteredInvites = invites.filter(i => i.full_name.toLowerCase().includes(search.toLowerCase()) || i.email.toLowerCase().includes(search.toLowerCase()))
+  const pendingInvites  = invites.filter(i => !i.accepted_at && i.is_active)
 
-  const filteredUsers = users.filter(u =>
-    u.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    u.email.toLowerCase().includes(search.toLowerCase()) ||
-    (u.unit_kerja?.nama ?? '').toLowerCase().includes(search.toLowerCase())
-  )
-
-  const filteredInvites = invites.filter(i =>
-    i.full_name.toLowerCase().includes(search.toLowerCase()) ||
-    i.email.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const pendingInvites = invites.filter(i => !i.accepted_at && i.is_active)
-
-  // Highlight users inactive > 90 days
   function isInactiveWarning(u: User): boolean {
     if (!u.last_login_at) return false
-    const days = Math.floor((Date.now() - new Date(u.last_login_at).getTime()) / 86400000)
-    return days > 90
+    return Math.floor((Date.now() - new Date(u.last_login_at).getTime()) / 86400000) > 90
   }
 
   async function handleInvite() {
     if (!invEmail.trim()) { toast.error('Email wajib diisi'); return }
-    if (!invEmail.toLowerCase().includes('@arranetwork.com')) {
-      toast.error('Hanya email @arranetwork.com yang diizinkan'); return
-    }
+    if (!invEmail.toLowerCase().includes('@arranetwork.com')) { toast.error('Hanya email @arranetwork.com'); return }
     if (!invName.trim()) { toast.error('Nama wajib diisi'); return }
     const emailLower = invEmail.trim().toLowerCase()
-    if (users.some(u => u.email === emailLower)) {
-      toast.error('Email sudah terdaftar sebagai pengguna aktif'); return
-    }
-    if (invites.some(i => i.email === emailLower && i.is_active && !i.accepted_at)) {
-      toast.error('Email sudah memiliki undangan aktif'); return
-    }
+    if (users.some(u => u.email === emailLower)) { toast.error('Email sudah terdaftar'); return }
+    if (invites.some(i => i.email === emailLower && i.is_active && !i.accepted_at)) { toast.error('Email sudah punya undangan aktif'); return }
+
     setSaving(true)
     const supabase = createClient()
     const { data, error } = await supabase
@@ -108,9 +74,22 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
       .insert({ email: emailLower, full_name: invName.trim(), role: invRole, job_title: invTitle || null, unit_kerja_id: invUK || null, invited_by: currentUserId })
       .select('*').single()
     if (error) { toast.error('Gagal mengundang', { description: error.message }); setSaving(false); return }
+
+    // Kirim email undangan
+    await fetch('/api/email/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to:            emailLower,
+        recipientName: invName.trim(),
+        inviterName:   currentUserName,
+        role:          ROLES[invRole].label,
+      }),
+    })
+
     setInvites(i => [...i, { ...data, unit_kerja: invUK ? ukMap.get(invUK) ?? null : null }])
     setTab('invites')
-    toast.success(`${invName} berhasil diundang sebagai ${ROLES[invRole].label}`)
+    toast.success(`${invName} berhasil diundang — email dikirim ke ${emailLower}`)
     setShowInvite(false)
     setInvEmail(''); setInvName(''); setInvRole('viewer'); setInvUK(''); setInvTitle('')
     setSaving(false)
@@ -140,13 +119,30 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
       const supabase = createClient()
       const { count } = await supabase.from('avr_risks').select('*', { count: 'exact', head: true }).eq('risk_owner_id', u.id).neq('status', 'Closed')
       if (count && count > 0) {
-        toast.warning(`${u.full_name} masih Risk Owner di ${count} risiko aktif. Reassign dulu sebelum nonaktifkan.`, { duration: 6000 })
+        toast.warning(`${u.full_name} masih Risk Owner di ${count} risiko aktif. Reassign dulu.`, { duration: 6000 })
         return
       }
     }
     const supabase = createClient()
     const { error } = await supabase.from('avr_user_profiles').update({ is_active: !u.is_active }).eq('id', u.id)
     if (error) { toast.error(error.message); return }
+
+    // Kirim email konfirmasi deactivate ke semua admin
+    if (u.is_active) {
+      const adminEmails = users.filter(x => x.role === 'admin' && x.is_active && x.email).map(x => x.email)
+      if (adminEmails.length > 0) {
+        await fetch('/api/email/deactivate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            adminEmails,
+            deactivatedUserName: u.full_name,
+            deactivatedByName:   currentUserName,
+          }),
+        })
+      }
+    }
+
     setUsers(us => us.map(x => x.id === u.id ? { ...x, is_active: !x.is_active } : x))
     toast.success(u.is_active ? `${u.full_name} dinonaktifkan` : `${u.full_name} diaktifkan`)
   }
@@ -175,12 +171,8 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
         </button>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 border-b border-black/8">
-        {[
-          { key: 'users',   label: `Pengguna (${users.length})` },
-          { key: 'invites', label: `Undangan (${pendingInvites.length})` },
-        ].map(t => (
+        {[{ key: 'users', label: `Pengguna (${users.length})` }, { key: 'invites', label: `Undangan (${pendingInvites.length})` }].map(t => (
           <button key={t.key} onClick={() => setTab(t.key as any)}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === t.key ? 'border-brand-blue text-brand-blue' : 'border-transparent text-black/40 hover:text-black'}`}>
             {t.label}
@@ -189,24 +181,15 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
       </div>
 
       <div className="card py-3">
-        <input className="input" placeholder="Cari nama atau email..."
-          value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="input" placeholder="Cari nama atau email..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
       {tab === 'users' && (
         <div className="card p-0 overflow-hidden">
           <table className="table-base">
-            <thead>
-              <tr>
-                <th>Nama</th><th>Email</th><th>Unit Kerja</th>
-                <th>Jabatan</th><th>Role</th><th>Status</th>
-                <th>Login Terakhir</th><th></th>
-              </tr>
-            </thead>
+            <thead><tr><th>Nama</th><th>Email</th><th>Unit Kerja</th><th>Jabatan</th><th>Role</th><th>Status</th><th>Login Terakhir</th><th></th></tr></thead>
             <tbody>
-              {filteredUsers.length === 0 && (
-                <tr><td colSpan={8} className="text-center py-10 text-black/30">Tidak ada pengguna</td></tr>
-              )}
+              {filteredUsers.length === 0 && <tr><td colSpan={8} className="text-center py-10 text-black/30">Tidak ada pengguna</td></tr>}
               {filteredUsers.map(u => {
                 const roleConfig = ROLES[u.role as AvrRole] ?? ROLES.viewer
                 const inactive90 = isInactiveWarning(u)
@@ -214,36 +197,23 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
                   <tr key={u.id} className={!u.is_active ? 'opacity-50' : ''}>
                     <td>
                       <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue text-xs font-semibold shrink-0">
-                          {u.full_name.charAt(0).toUpperCase()}
-                        </div>
+                        <div className="w-7 h-7 rounded-full bg-brand-blue/10 flex items-center justify-center text-brand-blue text-xs font-semibold shrink-0">{u.full_name.charAt(0).toUpperCase()}</div>
                         <p className="font-medium text-sm">{u.full_name}</p>
                       </div>
                     </td>
                     <td className="text-xs text-black/60">{u.email}</td>
-                    <td className="text-xs">
-                      {u.unit_kerja ? <span>{u.unit_kerja.nama} <span className="text-black/30">({u.unit_kerja.kode})</span></span> : <span className="text-black/25">—</span>}
-                    </td>
+                    <td className="text-xs">{u.unit_kerja ? <span>{u.unit_kerja.nama} <span className="text-black/30">({u.unit_kerja.kode})</span></span> : <span className="text-black/25">—</span>}</td>
                     <td className="text-xs text-black/60">{u.job_title ?? '—'}</td>
                     <td><span className={`badge text-[11px] ${roleConfig.color}`}>{roleConfig.label}</span></td>
-                    <td>
-                      <span className={`badge ${u.is_active ? 'bg-risk-low text-risk-low-text border-risk-low-text/20' : 'bg-black/5 text-black/40 border-black/10'}`}>
-                        {u.is_active ? 'Aktif' : 'Nonaktif'}
-                      </span>
-                    </td>
+                    <td><span className={`badge ${u.is_active ? 'bg-risk-low text-risk-low-text border-risk-low-text/20' : 'bg-black/5 text-black/40 border-black/10'}`}>{u.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
                     <td className={`text-xs ${inactive90 ? 'text-red-500 font-medium' : 'text-black/40'}`}>
                       {u.last_login_at
-                        ? <>
-                            {new Date(u.last_login_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                            {inactive90 && <span className="block text-[10px]">⚠️ {'>'} 90 hari</span>}
-                          </>
+                        ? <>{new Date(u.last_login_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}{inactive90 && <span className="block text-[10px]">⚠️ {'>'} 90 hari</span>}</>
                         : <span className="text-black/25">Belum pernah</span>}
                     </td>
                     <td>
                       <div className="flex items-center gap-1.5 justify-end">
-                        <button onClick={() => openEdit(u)} className="btn-ghost py-1 px-2 text-xs gap-1">
-                          <Pencil size={11} /> Edit
-                        </button>
+                        <button onClick={() => openEdit(u)} className="btn-ghost py-1 px-2 text-xs gap-1"><Pencil size={11} /> Edit</button>
                         {u.id !== currentUserId && (
                           <button onClick={() => toggleActive(u)} className="btn-ghost py-1 px-2 text-xs gap-1">
                             {u.is_active ? <ToggleRight size={13} className="text-brand-blue" /> : <ToggleLeft size={13} />}
@@ -263,13 +233,9 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
       {tab === 'invites' && (
         <div className="card p-0 overflow-hidden">
           <table className="table-base">
-            <thead>
-              <tr><th>Nama</th><th>Email</th><th>Unit Kerja</th><th>Role</th><th>Status</th><th>Diundang</th><th></th></tr>
-            </thead>
+            <thead><tr><th>Nama</th><th>Email</th><th>Unit Kerja</th><th>Role</th><th>Status</th><th>Diundang</th><th></th></tr></thead>
             <tbody>
-              {filteredInvites.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-10 text-black/30">Tidak ada undangan</td></tr>
-              )}
+              {filteredInvites.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-black/30">Tidak ada undangan</td></tr>}
               {filteredInvites.map(i => {
                 const roleConfig = ROLES[i.role as AvrRole] ?? ROLES.viewer
                 return (
@@ -279,22 +245,12 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
                     <td className="text-xs">{i.unit_kerja ? i.unit_kerja.nama : <span className="text-black/25">—</span>}</td>
                     <td><span className={`badge text-[11px] ${roleConfig.color}`}>{roleConfig.label}</span></td>
                     <td>
-                      {i.accepted_at
-                        ? <span className="badge bg-risk-low text-risk-low-text border-risk-low-text/20">Diterima</span>
-                        : i.is_active
-                        ? <span className="flex items-center gap-1 text-xs text-brand-amber font-medium"><Clock size={11} /> Menunggu login</span>
+                      {i.accepted_at ? <span className="badge bg-risk-low text-risk-low-text border-risk-low-text/20">Diterima</span>
+                        : i.is_active ? <span className="flex items-center gap-1 text-xs text-brand-amber font-medium"><Clock size={11} /> Menunggu login</span>
                         : <span className="badge bg-black/5 text-black/40 border-black/10">Dibatalkan</span>}
                     </td>
-                    <td className="text-xs text-black/40">
-                      {new Date(i.invited_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td>
-                      {!i.accepted_at && i.is_active && (
-                        <button onClick={() => cancelInvite(i)} className="btn-ghost py-1 px-2 text-xs gap-1 text-red-500">
-                          <X size={11} /> Batalkan
-                        </button>
-                      )}
-                    </td>
+                    <td className="text-xs text-black/40">{new Date(i.invited_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                    <td>{!i.accepted_at && i.is_active && <button onClick={() => cancelInvite(i)} className="btn-ghost py-1 px-2 text-xs gap-1 text-red-500"><X size={11} /> Batalkan</button>}</td>
                   </tr>
                 )
               })}
@@ -308,10 +264,7 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
-              <div>
-                <h3>Undang Pengguna</h3>
-                <p className="text-xs text-black/40 mt-0.5">Role aktif saat pertama kali login dengan Google</p>
-              </div>
+              <div><h3>Undang Pengguna</h3><p className="text-xs text-black/40 mt-0.5">Email undangan akan dikirim otomatis via ARNES</p></div>
               <button onClick={() => setShowInvite(false)} className="btn-ghost p-1"><X size={16} /></button>
             </div>
             <div className="space-y-4">
@@ -319,14 +272,12 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
                 <label className="label">Email <span className="text-red-400">*</span></label>
                 <div className="relative">
                   <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-black/30" />
-                  <input className="input pl-8" placeholder="nama@arranetwork.com"
-                    value={invEmail} onChange={e => setInvEmail(e.target.value)} />
+                  <input className="input pl-8" placeholder="nama@arranetwork.com" value={invEmail} onChange={e => setInvEmail(e.target.value)} />
                 </div>
               </div>
               <div>
                 <label className="label">Nama Lengkap <span className="text-red-400">*</span></label>
-                <input className="input" placeholder="Nama sesuai akun Google"
-                  value={invName} onChange={e => setInvName(e.target.value)} />
+                <input className="input" placeholder="Nama sesuai akun Google" value={invName} onChange={e => setInvName(e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -338,8 +289,7 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
                 </div>
                 <div>
                   <label className="label">Jabatan</label>
-                  <input className="input" placeholder="Contoh: IT Manager"
-                    value={invTitle} onChange={e => setInvTitle(e.target.value)} />
+                  <input className="input" placeholder="Contoh: IT Manager" value={invTitle} onChange={e => setInvTitle(e.target.value)} />
                 </div>
               </div>
               <div>
@@ -347,12 +297,8 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
                 <div className="space-y-2">
                   {ROLE_LIST.map(r => (
                     <label key={r} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${invRole === r ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
-                      <input type="radio" name="inv-role" value={r} checked={invRole === r}
-                        onChange={() => setInvRole(r)} className="accent-brand-blue mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium">{ROLES[r].label}</p>
-                        <p className="text-xs text-black/40">{ROLES[r].desc}</p>
-                      </div>
+                      <input type="radio" name="inv-role" value={r} checked={invRole === r} onChange={() => setInvRole(r)} className="accent-brand-blue mt-0.5 shrink-0" />
+                      <div><p className="text-sm font-medium">{ROLES[r].label}</p><p className="text-xs text-black/40">{ROLES[r].desc}</p></div>
                     </label>
                   ))}
                 </div>
@@ -360,7 +306,7 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
             </div>
             <div className="flex gap-3 mt-6">
               <button onClick={handleInvite} className="btn-primary flex-1 justify-center gap-1.5" disabled={saving}>
-                <UserCheck size={15} /> {saving ? 'Mengundang...' : 'Undang Pengguna'}
+                <UserCheck size={15} /> {saving ? 'Mengundang...' : 'Undang & Kirim Email'}
               </button>
               <button onClick={() => setShowInvite(false)} className="btn-secondary">Batal</button>
             </div>
@@ -373,10 +319,7 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-5">
-              <div>
-                <h3>Edit Pengguna</h3>
-                <p className="text-xs text-black/40 mt-0.5">{editing.email}</p>
-              </div>
+              <div><h3>Edit Pengguna</h3><p className="text-xs text-black/40 mt-0.5">{editing.email}</p></div>
               <button onClick={() => setEditing(null)} className="btn-ghost p-1"><X size={16} /></button>
             </div>
             <div className="space-y-4">
@@ -408,23 +351,15 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
                 <div className="space-y-2">
                   {ROLE_LIST.map(r => (
                     <label key={r} className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${editing.id === currentUserId ? 'opacity-50 cursor-not-allowed' : ''} ${editRole === r ? 'border-brand-blue bg-blue-50' : 'border-black/8 hover:border-brand-blue/30'}`}>
-                      <input type="radio" name="edit-role" value={r} checked={editRole === r}
-                        onChange={() => editing.id !== currentUserId && setEditRole(r)}
-                        disabled={editing.id === currentUserId}
-                        className="accent-brand-blue mt-0.5 shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium">{ROLES[r].label}</p>
-                        <p className="text-xs text-black/40">{ROLES[r].desc}</p>
-                      </div>
+                      <input type="radio" name="edit-role" value={r} checked={editRole === r} onChange={() => editing.id !== currentUserId && setEditRole(r)} disabled={editing.id === currentUserId} className="accent-brand-blue mt-0.5 shrink-0" />
+                      <div><p className="text-sm font-medium">{ROLES[r].label}</p><p className="text-xs text-black/40">{ROLES[r].desc}</p></div>
                     </label>
                   ))}
                 </div>
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={handleSaveEdit} className="btn-primary flex-1 justify-center" disabled={saving}>
-                {saving ? 'Menyimpan...' : 'Simpan'}
-              </button>
+              <button onClick={handleSaveEdit} className="btn-primary flex-1 justify-center" disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan'}</button>
               <button onClick={() => setEditing(null)} className="btn-secondary">Batal</button>
             </div>
           </div>
