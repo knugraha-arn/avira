@@ -96,6 +96,21 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
 
     const { error } = await supabase.from('avr_risks').update(payload).eq('id', risk.id)
     if (error) { toast.error('Gagal menyimpan', { description: error.message }); setLoading(false); return }
+
+    // Kirim email eskalasi MRM kalau baru di-flag (sebelumnya false, sekarang true)
+    if (form.is_mrm_flagged && !risk.is_mrm_flagged) {
+      await fetch('/api/email/mrm-escalation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          riskCode:  risk.risk_code,
+          riskTitle: form.title,
+          mrmReason: form.mrm_reason || null,
+          riskId:    risk.id,
+        }),
+      })
+    }
+
     toast.success('Risiko berhasil diperbarui')
     router.push(`/risks/${risk.id}`)
     router.refresh()
@@ -104,7 +119,6 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
 
-      {/* Identitas */}
       <Section step="Identitas Risiko">
         <div className="space-y-4">
           <Field label={RISK_FORM.title.label} tooltip={RISK_FORM.title.tooltip} required>
@@ -147,7 +161,6 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
         </div>
       </Section>
 
-      {/* Ownership */}
       <Section step="Ownership (RACI)">
         <InfoBox text={RISK_FORM.raci_note} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
@@ -166,7 +179,6 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
         </div>
       </Section>
 
-      {/* Inherent */}
       <Section step="Penilaian Risiko Inheren">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -201,7 +213,6 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
         )}
       </Section>
 
-      {/* Residual */}
       <Section step="Residual Risk (Opsional)">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Residual Likelihood" tooltip={RISK_FORM.residual_likelihood.tooltip}>
@@ -226,7 +237,6 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
         )}
       </Section>
 
-      {/* Treatment */}
       <Section step="Risk Treatment">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           {TREATMENTS.map(t => (
@@ -242,7 +252,6 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
         </Field>
       </Section>
 
-      {/* Review cycle */}
       <Section step="Review Cycle">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {FREQ_OPTIONS.map(f => (
@@ -254,13 +263,12 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
         </div>
       </Section>
 
-      {/* MRM flag */}
       <Section step="Management Review">
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" checked={form.is_mrm_flagged} onChange={e => set('is_mrm_flagged', e.target.checked)} className="accent-brand-blue w-4 h-4" />
           <div>
             <p className="text-sm font-medium">Tandai sebagai agenda MRM</p>
-            <p className="text-xs text-black/40">Risiko ini akan masuk dalam agenda Management Review Meeting</p>
+            <p className="text-xs text-black/40">Risiko ini akan masuk dalam agenda Management Review Meeting — email notifikasi dikirim ke semua Admin</p>
           </div>
         </label>
         {form.is_mrm_flagged && (
@@ -282,12 +290,7 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
 }
 
 function Section({ step, children }: { step: string; children: React.ReactNode }) {
-  return (
-    <div className="card">
-      <h3 className="mb-4">{step}</h3>
-      {children}
-    </div>
-  )
+  return <div className="card"><h3 className="mb-4">{step}</h3>{children}</div>
 }
 
 function Field({ label, tooltip, required, children }: { label: string; tooltip?: string; required?: boolean; children: React.ReactNode }) {

@@ -13,9 +13,10 @@ interface Props {
   risk: any
   closure: any
   currentUserId: string
+  approverName: string
 }
 
-export function ApproveClosureForm({ risk, closure, currentUserId }: Props) {
+export function ApproveClosureForm({ risk, closure, currentUserId, approverName }: Props) {
   const router = useRouter()
   const [loading, setLoading]           = useState(false)
   const [decision, setDecision]         = useState<'Approved' | 'Rejected' | ''>('')
@@ -41,6 +42,24 @@ export function ApproveClosureForm({ risk, closure, currentUserId }: Props) {
 
     if (error) { toast.error('Gagal menyimpan', { description: error.message }); setLoading(false); return }
 
+    // Kirim email notifikasi ke requester
+    if (closure.requester?.email) {
+      await fetch('/api/email/closure-decision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to:              closure.requester.email,
+          recipientName:   closure.requester.full_name,
+          riskCode:        risk.risk_code,
+          riskTitle:       risk.title,
+          approverName,
+          decision,
+          rejectionReason: decision === 'Rejected' ? rejectionReason : undefined,
+          riskId:          risk.id,
+        }),
+      })
+    }
+
     if (decision === 'Approved') {
       toast.success('Risiko berhasil ditutup')
     } else {
@@ -54,7 +73,6 @@ export function ApproveClosureForm({ risk, closure, currentUserId }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
 
-      {/* Closure request detail */}
       <div className="card space-y-3">
         <h3 className="mb-1">Detail Pengajuan</h3>
         <div className="grid grid-cols-2 gap-3 text-sm">
@@ -80,7 +98,6 @@ export function ApproveClosureForm({ risk, closure, currentUserId }: Props) {
         </div>
       </div>
 
-      {/* Warning for extreme/high */}
       {['Extreme','High'].includes(risk.inherent_classification) && (
         <div className="flex items-start gap-3 p-4 rounded-lg bg-brand-amber/10 border border-brand-amber/20">
           <AlertTriangle size={15} className="text-[#7A4C00] shrink-0 mt-0.5" />
@@ -90,7 +107,6 @@ export function ApproveClosureForm({ risk, closure, currentUserId }: Props) {
         </div>
       )}
 
-      {/* Decision */}
       <div className="card">
         <h3 className="mb-3">Keputusan Anda</h3>
         <div className="space-y-2">

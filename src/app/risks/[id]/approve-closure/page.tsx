@@ -13,7 +13,7 @@ export default async function ApproveClosurePage({ params }: Props) {
   if (!user) redirect('/auth/login')
 
   const { data: profile } = await supabase
-    .from('avr_user_profiles').select('role').eq('id', user.id).single()
+    .from('avr_user_profiles').select('role, full_name').eq('id', user.id).single()
   if (profile?.role !== 'admin') redirect(`/risks/${id}`)
 
   const { data: risk } = await supabase
@@ -26,7 +26,7 @@ export default async function ApproveClosurePage({ params }: Props) {
     .from('avr_risk_closures')
     .select(`
       *,
-      requester:avr_user_profiles!avr_risk_closures_requested_by_fkey(full_name, job_title),
+      requester:avr_user_profiles!avr_risk_closures_requested_by_fkey(full_name, job_title, email),
       approver:avr_user_profiles!avr_risk_closures_approver_id_fkey(full_name)
     `)
     .eq('risk_id', id)
@@ -34,8 +34,6 @@ export default async function ApproveClosurePage({ params }: Props) {
     .single()
 
   if (!closure) redirect(`/risks/${id}`)
-
-  // Only the designated approver can approve
   if (closure.approver_id !== user.id) redirect(`/risks/${id}`)
 
   return (
@@ -50,7 +48,12 @@ export default async function ApproveClosurePage({ params }: Props) {
           <span className="font-mono text-brand-blue">{risk.risk_code}</span> · {risk.title}
         </p>
       </div>
-      <ApproveClosureForm risk={risk} closure={closure} currentUserId={user.id} />
+      <ApproveClosureForm
+        risk={risk}
+        closure={closure}
+        currentUserId={user.id}
+        approverName={profile?.full_name ?? 'Admin'}
+      />
     </div>
   )
 }
