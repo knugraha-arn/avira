@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ShieldCheck } from 'lucide-react'
+import { ShieldCheck, ShieldOff } from 'lucide-react'
 
 const FEATURES = [
   'Risk Register terpusat dengan audit trail otomatis',
@@ -14,6 +15,8 @@ const FEATURES = [
 export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState<string | null>(null)
+  const searchParams          = useSearchParams()
+  const noAccess              = searchParams.get('error') === 'no_access'
 
   async function handleGoogleLogin() {
     setLoading(true)
@@ -72,16 +75,42 @@ export default function LoginPage() {
             </div>
             <span className="font-semibold text-brand-navy">AVIRA</span>
           </div>
+
           <h2 className="text-2xl font-semibold text-brand-navy">Selamat datang</h2>
           <p className="text-black/40 text-sm mt-1 mb-8">Masuk menggunakan akun Google Arranet kamu untuk melanjutkan.</p>
+
+          {/* No access message */}
+          {noAccess && (
+            <div className="mb-6 flex items-start gap-3 rounded-lg border border-brand-amber/30 bg-brand-amber/8 px-4 py-3.5">
+              <ShieldOff size={16} className="text-[#7A4C00] shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-[#7A4C00]">Akses tidak tersedia</p>
+                <p className="text-xs text-[#7A4C00]/70 mt-0.5">Akses AVIRA diberikan sesuai keperluan. Hubungi administrator untuk mendapatkan akses.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Auth error */}
           {error && (
             <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{error}</div>
           )}
-          <button onClick={handleGoogleLogin} disabled={loading}
-            className="w-full flex items-center justify-center gap-3 rounded-lg border border-black/10 bg-white px-4 py-3.5 text-sm font-medium text-black hover:bg-brand-gray active:scale-95 transition-all disabled:opacity-50 shadow-sm">
-            {loading ? <Spinner /> : <GoogleIcon />}
-            {loading ? 'Menghubungkan...' : 'Masuk dengan Google'}
-          </button>
+
+          {!noAccess && (
+            <button onClick={handleGoogleLogin} disabled={loading}
+              className="w-full flex items-center justify-center gap-3 rounded-lg border border-black/10 bg-white px-4 py-3.5 text-sm font-medium text-black hover:bg-brand-gray active:scale-95 transition-all disabled:opacity-50 shadow-sm">
+              {loading ? <Spinner /> : <GoogleIcon />}
+              {loading ? 'Menghubungkan...' : 'Masuk dengan Google'}
+            </button>
+          )}
+
+          {noAccess && (
+            <button onClick={handleGoogleLogin} disabled={loading}
+              className="w-full flex items-center justify-center gap-3 rounded-lg border border-black/10 bg-white px-4 py-3.5 text-sm font-medium text-black/50 hover:bg-brand-gray transition-all disabled:opacity-50 shadow-sm">
+              {loading ? <Spinner /> : <GoogleIcon />}
+              {loading ? 'Menghubungkan...' : 'Coba akun lain'}
+            </button>
+          )}
+
           <p className="text-center text-xs mt-5" style={{ color: 'rgba(0,0,0,0.3)' }}>
             Hanya akun dengan domain <span style={{ color: 'rgba(0,0,0,0.5)', fontWeight: 500 }}>@arranetwork.com</span> yang dapat mengakses platform ini.
           </p>

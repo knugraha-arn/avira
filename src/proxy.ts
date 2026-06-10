@@ -35,11 +35,17 @@ export async function proxy(request: NextRequest) {
   const isProtectedRoute = isDashboardRoute || isRisksRoute || isAdminRoute ||
     isUsersRoute || isNotifRoute || isRiskGenRoute || isApiRoute
 
+  // Kalau di login page dengan error param — jangan redirect ke mana-mana
+  const isLoginWithError = request.nextUrl.pathname === '/auth/login' &&
+    request.nextUrl.searchParams.has('error')
+
   if (isProtectedRoute && !user) {
     return NextResponse.redirect(new URL("/auth/login", request.url));
   }
 
-  if (isAuthRoute && user && !request.nextUrl.pathname.startsWith("/auth/callback")) {
+  if (isAuthRoute && user &&
+    !request.nextUrl.pathname.startsWith("/auth/callback") &&
+    !isLoginWithError) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 

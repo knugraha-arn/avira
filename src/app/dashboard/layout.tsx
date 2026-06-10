@@ -6,10 +6,7 @@ import type { AvrUserProfile } from '@/types'
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
-
-  if (error || !user) {
-    redirect('/auth/login')
-  }
+  if (error || !user) redirect('/auth/login')
 
   const { data: profile } = await supabase
     .from('avr_user_profiles')
@@ -17,19 +14,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .eq('id', user.id)
     .single()
 
-  if (!profile) {
-    redirect('/auth/login')
-  }
+  if (!profile) redirect('/auth/login?error=no_access')
 
-  const { count: unreadCount } = await supabase
-    .from('avr_notifications')
-    .select('*', { count: 'exact', head: true })
-    .eq('user_id', user.id)
-    .eq('is_read', false)
+  const [{ count: unreadCount }, { count: libraryCount }] = await Promise.all([
+    supabase.from('avr_notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id).eq('is_read', false),
+    supabase.from('avr_risk_library')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending'),
+  ])
 
   return (
     <div className="flex min-h-screen bg-brand-gray">
-      <Sidebar profile={profile as AvrUserProfile} unreadCount={unreadCount ?? 0} />
+      <Sidebar
+        profile={profile as AvrUserProfile}
+        unreadCount={unreadCount ?? 0}
+        libraryCount={libraryCount ?? 0}
+      />
       <main className="flex-1 ml-56 min-w-0">
         <div className="max-w-7xl mx-auto px-6 py-6">
           {children}
