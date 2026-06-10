@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import {
   ShieldAlert, TrendingUp, Clock, AlertTriangle,
-  CheckCircle, Flag, ArrowRight,
+  CheckCircle, Flag, ArrowRight, Users,
 } from 'lucide-react'
 import { RiskHeatmap } from '@/components/risk/RiskHeatmap'
 import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
@@ -21,6 +21,11 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/auth/login')
+
+  const { data: profile } = await supabase
+    .from('avr_user_profiles').select('role').eq('id', user.id).single()
+
+  const isAdmin = profile?.role === 'admin'
 
   const [
     { data: summary },
@@ -41,6 +46,22 @@ export default async function DashboardPage() {
     supabase.from('avr_v_my_actions').select('*').limit(5),
   ])
 
+  // Periodic access review — hanya untuk admin
+  let inactiveUsers: { id: string; full_name: string; last_login_at: string | null }[] = []
+  if (isAdmin) {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 90)
+    const { data } = await supabase
+      .from('avr_user_profiles')
+      .select('id, full_name, last_login_at')
+      .eq('is_active', true)
+      .or(`last_login_at.is.null,last_login_at.lt.${cutoff.toISOString()}`)
+      .neq('id', user.id)
+      .order('last_login_at', { ascending: true, nullsFirst: true })
+      .limit(5)
+    inactiveUsers = data ?? []
+  }
+
   const s = summary as AvrDashboardSummary
 
   return (
@@ -51,6 +72,38 @@ export default async function DashboardPage() {
         <h1 className="mt-1">Dashboard Risiko</h1>
         <p className="text-sm text-black/50 mt-0.5">Status terkini seluruh risiko organisasi</p>
       </div>
+
+      {/* Periodic Access Review Alert — admin only */}
+      {isAdmin && inactiveUsers.length > 0 && (
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-brand-amber/10 border border-brand-amber/20">
+          <Users size={16} className="text-[#7A4C00] shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-[#7A4C00]">
+              Periodic Access Review — {inactiveUsers.length} pengguna tidak aktif {'>'} 90 hari
+            </p>
+            <p className="text-xs text-[#7A4C00]/70 mt-0.5 mb-2">
+              ISO 27001 A.9.2.5 — Review akses pengguna secara berkala untuk memastikan hak akses masih valid.
+            </p>
+            <div className="space-y-1">
+              {inactiveUsers.map(u => (
+                <div key={u.id} className="flex items-center gap-2 text-xs text-[#7A4C00]/80">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#7A4C00]/40 shrink-0" />
+                  <span className="font-medium">{u.full_name}</span>
+                  <span className="text-[#7A4C00]/50">—</span>
+                  <span>
+                    {u.last_login_at
+                      ? `terakhir login ${formatDate(u.last_login_at)}`
+                      : 'belum pernah login'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <Link href="/users" className="btn-secondary text-xs shrink-0 gap-1 py-1.5">
+            Review Akses <ArrowRight size={11} />
+          </Link>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -108,7 +161,7 @@ export default async function DashboardPage() {
                 <ClassificationBadge classification={risk.inherent_classification} size="sm" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-black truncate">{risk.title}</p>
-                  <p className="text-xs text-black/40">{risk.risk_code} · {risk.department}</p>
+                  <p className="text-xs text-black/40">{risk.risk_code} · {risk.category}</p>
                 </div>
                 <StatusBadge status={risk.status} />
               </Link>
@@ -157,10 +210,8 @@ export default async function DashboardPage() {
                     <td>
                       <div className="flex items-center gap-1.5">
                         <div className="w-16 h-1.5 bg-black/8 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-brand-blue rounded-full"
-                            style={{ width: `${o.progress_percentage}%` }}
-                          />
+                          <div className="h-full bg-brand-blue rounded-full"
+                            style={{ width: `${o.progress_percentage}%` }} />
                         </div>
                         <span className="text-xs text-black/40">{o.progress_percentage}%</span>
                       </div>
@@ -209,7 +260,6 @@ export default async function DashboardPage() {
   )
 }
 
-// ── KPI Card ──────────────────────────────────────────────────
 function KpiCard({ label, value, icon, sub, accent }: {
   label: string; value: number; icon: React.ReactNode; sub: string; accent?: 'amber'
 }) {
