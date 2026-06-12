@@ -59,6 +59,28 @@ export function formatDate(d: string | null): string {
   })
 }
 
+/**
+ * Format timestamp lengkap dengan jam, menit, detik dan timezone WIB.
+ * Dipakai di audit trail, log aktivitas, header/footer report, dan semua aksi user.
+ * Output: "12 Jun 2026, 14:32:05 WIB"
+ */
+export function formatTimestamp(d: string | Date | null | undefined): string {
+  if (!d) return '—'
+  const date = typeof d === 'string' ? new Date(d) : d
+  const formatted = new Intl.DateTimeFormat('id-ID', {
+    day:      '2-digit',
+    month:    'short',
+    year:     'numeric',
+    hour:     '2-digit',
+    minute:   '2-digit',
+    second:   '2-digit',
+    timeZone: 'Asia/Jakarta',
+    hour12:   false,
+  }).format(date)
+  // Intl mengeluarkan "12 Jun 2026 14.32.05" → normalize ke koma + titik dua
+  return formatted.replace(/\./g, ':').replace(/(\d{4})\s(\d)/, '$1, $2') + ' WIB'
+}
+
 export function daysFromToday(d: string | null): number | null {
   if (!d) return null
   return Math.ceil((new Date(d).getTime() - Date.now()) / 86_400_000)
