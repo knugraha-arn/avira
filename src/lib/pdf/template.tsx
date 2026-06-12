@@ -213,7 +213,7 @@ export function PdfPageHeader() {
   return (
     <View style={shared.pageHeader} fixed>
       <Text style={shared.confidentialLabel}>CONFIDENTIAL</Text>
-      <Image style={shared.logo} src="public/logo-arranet.png" />
+      <Image style={shared.logo} src="https://avira.arranetwork.com/logo-arranet.png" />
     </View>
   )
 }
