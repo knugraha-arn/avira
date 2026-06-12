@@ -92,7 +92,6 @@ export default async function ReportsPage() {
                   </div>
                 </div>
                 <p className="text-xs text-black/60 leading-relaxed mb-4">{r.desc}</p>
-                {/* Download langsung — tidak buka tab baru, tidak print dialog */}
                 <a
                   href={r.href}
                   download={r.filename}
