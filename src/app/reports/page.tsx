@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
-import Link from 'next/link'
 import { FileText, AlertTriangle, Clock, Flag, Download } from 'lucide-react'
 import type { AvrUserProfile } from '@/types'
 import { canReport } from '@/lib/roles'
@@ -16,6 +15,7 @@ const REPORTS = [
     icon:       FileText,
     color:      'bg-blue-50 text-brand-blue',
     href:       '/api/report-rr',
+    filename:   'AVIRA_RiskRegister.pdf',
     compliance: 'ISO 27001 Kl. 6.1 · ISO 9001 Kl. 6.1',
   },
   {
@@ -25,6 +25,7 @@ const REPORTS = [
     icon:       AlertTriangle,
     color:      'bg-red-50 text-red-600',
     href:       '/api/report-high',
+    filename:   'AVIRA_HighExtremeRisk.pdf',
     compliance: 'ISO 27001 Kl. 8.2',
   },
   {
@@ -34,6 +35,7 @@ const REPORTS = [
     icon:       Clock,
     color:      'bg-brand-amber/10 text-[#7A4C00]',
     href:       '/api/report-overdue',
+    filename:   'AVIRA_OverdueMitigation.pdf',
     compliance: 'ISO 27001 Kl. 9.1',
   },
   {
@@ -43,6 +45,7 @@ const REPORTS = [
     icon:       Flag,
     color:      'bg-brand-lime/20 text-brand-navy',
     href:       '/api/report-mrm',
+    filename:   'AVIRA_MRM.pdf',
     compliance: 'ISO 27001 Kl. 9.3 · ISO 9001 Kl. 9.3',
   },
 ]
@@ -56,7 +59,6 @@ export default async function ReportsPage() {
     .from('avr_user_profiles').select('*').eq('id', user.id).single()
   if (!profile) redirect('/auth/login')
 
-  // Viewer tidak bisa akses laporan
   if (!canReport(profile.role)) redirect('/dashboard')
 
   const { count: unreadCount } = await supabase
@@ -73,7 +75,7 @@ export default async function ReportsPage() {
             <span className="eyebrow">Export</span>
             <h1 className="mt-1">Laporan</h1>
             <p className="text-sm text-black/50 mt-0.5">
-              Generate laporan PDF — siap untuk audit ISO 27001 & ISO 9001
+              Generate laporan PDF — siap untuk audit ISO 27001 &amp; ISO 9001
             </p>
           </div>
 
@@ -90,9 +92,13 @@ export default async function ReportsPage() {
                   </div>
                 </div>
                 <p className="text-xs text-black/60 leading-relaxed mb-4">{r.desc}</p>
-                <a href={r.href} target="_blank" rel="noopener noreferrer"
-                  className="btn-primary text-xs gap-1.5 w-full justify-center py-2">
-                  <Download size={13} /> Generate PDF
+                {/* Download langsung — tidak buka tab baru, tidak print dialog */}
+                <a
+                  href={r.href}
+                  download={r.filename}
+                  className="btn-primary text-xs gap-1.5 w-full justify-center py-2"
+                >
+                  <Download size={13} /> Download PDF
                 </a>
               </div>
             ))}
@@ -101,7 +107,8 @@ export default async function ReportsPage() {
           <div className="card bg-brand-gray border-0 p-4">
             <p className="text-xs text-black/40 leading-relaxed">
               <strong className="text-black/60">Catatan:</strong> Laporan digenerate real-time dari data terkini.
-              Setiap laporan menyertakan tanggal generate dan nama pembuat untuk audit trail.
+              Setiap laporan menyertakan timestamp generate, nama pembuat, dan klasifikasi{' '}
+              <strong className="text-black/60">CONFIDENTIAL</strong> di setiap halaman sesuai ISO 27001 Annex A 5.13.
             </p>
           </div>
         </div>

@@ -1,6 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { formatDate, formatTimestamp } from '@/lib/utils'
+import { renderToBuffer } from '@react-pdf/renderer'
+import React from 'react'
+import { Document, Page, View, Text } from '@react-pdf/renderer'
+import {
+  shared, BRAND,
+  PdfPageHeader, PdfPageFooter,
+  ClassBadge,
+} from '@/lib/pdf/template'
 
 export const runtime = 'nodejs'
 
@@ -28,93 +36,100 @@ export async function GET() {
     .order('inherent_score', { ascending: false })
 
   const now = formatTimestamp(new Date())
-  const classBg: Record<string, string> = { High: '#FFE0A0', Extreme: '#FFCCCC' }
-  const classColor: Record<string, string> = { High: '#6B3500', Extreme: '#CC0000' }
+  const riskList = risks ?? []
+  const extremeCount = riskList.filter(r => r.inherent_classification === 'Extreme').length
 
-  const rows = (risks ?? []).map(r => {
-    const cls = r.inherent_classification ?? 'High'
-    return `
-    <tr>
-      <td style="font-family:monospace;font-size:11px;color:#0344D8;white-space:nowrap">${r.risk_code}</td>
-      <td>
-        <div style="font-weight:600;font-size:12px">${r.title}</div>
-        <div style="color:#888;font-size:10px;margin-top:2px">${r.category} · ${(r as any).unit_kerja?.nama ?? '—'}</div>
-        ${r.existing_control ? `<div style="color:#666;font-size:10px;margin-top:4px"><strong>Kontrol:</strong> ${r.existing_control}</div>` : ''}
-      </td>
-      <td style="text-align:center;white-space:nowrap">
-        <span style="background:${classBg[cls]};color:${classColor[cls]};padding:3px 10px;border-radius:4px;font-size:12px;font-weight:600">${cls}</span>
-        <div style="font-size:10px;color:#888;margin-top:2px">${r.inherent_score} (L${r.likelihood}×I${r.impact})</div>
-      </td>
-      <td style="text-align:center">
-        ${r.residual_classification ? `<span style="background:${classBg[r.residual_classification] ?? '#F0F0F0'};color:${classColor[r.residual_classification] ?? '#666'};padding:2px 8px;border-radius:4px;font-size:11px">${r.residual_classification} (${r.residual_score})</span>` : '<span style="color:#ccc">—</span>'}
-      </td>
-      <td style="font-size:11px">${r.treatment_strategy ?? '—'}<br><span style="color:#888;font-size:10px">${r.treatment_notes ?? ''}</span></td>
-      <td style="font-size:11px">${(r as any).risk_owner?.full_name ?? '—'}</td>
-      <td style="font-size:11px;color:${new Date(r.next_review_date ?? '').getTime() < Date.now() ? '#CC0000' : '#888'}">${formatDate(r.next_review_date)}</td>
-    </tr>`
-  }).join('')
+  const colW = { code: '9%', title: '30%', inherent: '11%', residual: '11%', treatment: '22%', owner: '12%', review: '5%' }
 
-  const html = `<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; color: #1A1F2E; background: white; padding: 32px; }
-  .header { border-bottom: 2px solid #CC0000; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; }
-  .brand { font-size: 22px; font-weight: 700; color: #0344D8; }
-  .report-title { font-size: 16px; font-weight: 600; margin-top: 4px; }
-  .meta { font-size: 11px; color: #888; margin-top: 4px; }
-  .badge { background: #FFCCCC; color: #CC0000; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
-  .alert-box { background: #FFF5F5; border: 1px solid #FFD0D0; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 12px; color: #CC0000; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #F8F9FB; color: #888; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 10px; text-align: left; border-bottom: 1px solid #E5E7EB; }
-  td { padding: 10px 10px; border-bottom: 1px solid #F3F4F6; vertical-align: top; }
-  .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #E5E7EB; font-size: 10px; color: #aaa; display: flex; justify-content: space-between; }
-  @media print { body { padding: 16px; } }
-</style>
-</head>
-<body>
-<div class="header">
-  <div>
-    <div class="brand">AVIRA</div>
-    <div class="report-title">High & Extreme Risk Report</div>
-    <div class="meta">Digenerate: ${now} · Oleh: ${profile?.full_name ?? '—'}</div>
-  </div>
-  <span class="badge">ISO 27001 · Kl. 8.2</span>
-</div>
+  const doc = (
+    <Document title="High & Extreme Risk Report" author={profile?.full_name ?? 'AVIRA'}>
+      <Page size="A4" orientation="landscape" style={shared.page}>
+        <PdfPageHeader />
+        <PdfPageFooter />
 
-<div class="alert-box">
-  ⚠️ Laporan ini berisi <strong>${risks?.length ?? 0} risiko</strong> dengan klasifikasi High dan Extreme yang memerlukan perhatian segera.
-  ${risks?.filter(r => r.inherent_classification === 'Extreme').length ? `Terdapat <strong>${risks?.filter(r => r.inherent_classification === 'Extreme').length} risiko Extreme</strong> yang harus dibahas di Management Review Meeting.` : ''}
-</div>
+        <View style={[shared.reportHeaderBox, { borderBottomColor: BRAND.red }]}>
+          <View>
+            <Text style={shared.reportTitle}>High &amp; Extreme Risk Report</Text>
+            <Text style={shared.reportMeta}>Digenerate: {now} · Oleh: {profile?.full_name ?? '—'}</Text>
+          </View>
+          <Text style={[shared.complianceBadge, { backgroundColor: '#FFCCCC', color: BRAND.red }]}>
+            ISO 27001 Kl. 8.2
+          </Text>
+        </View>
 
-<table>
-  <thead>
-    <tr>
-      <th>Kode</th>
-      <th>Judul Risiko</th>
-      <th style="text-align:center">Inherent</th>
-      <th style="text-align:center">Residual</th>
-      <th>Treatment</th>
-      <th>Risk Owner</th>
-      <th>Next Review</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${rows || '<tr><td colspan="7" style="text-align:center;color:#ccc;padding:24px">Tidak ada risiko High/Extreme</td></tr>'}
-  </tbody>
-</table>
+        {/* Alert box */}
+        <View style={shared.alertBox}>
+          <Text style={shared.alertText}>
+            ⚠  Laporan ini berisi {riskList.length} risiko dengan klasifikasi High dan Extreme.
+            {extremeCount > 0 ? `  Terdapat ${extremeCount} risiko Extreme yang harus dibahas di Management Review Meeting.` : ''}
+          </Text>
+        </View>
 
-<div class="footer">
-  <span>AVIRA Risk Management · Arranet · Dokumen Rahasia</span>
-  <span>${now}</span>
-</div>
-<script>window.onload = () => window.print()</script>
-</body>
-</html>`
+        {/* Tabel */}
+        <View style={shared.table}>
+          <View style={shared.tableHeader}>
+            <Text style={[shared.tableHeaderCell, { width: colW.code }]}>Kode</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.title }]}>Judul Risiko</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.inherent, textAlign: 'center' }]}>Inherent</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.residual, textAlign: 'center' }]}>Residual</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.treatment }]}>Treatment</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.owner }]}>Risk Owner</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.review }]}>Review</Text>
+          </View>
 
-  return new NextResponse(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+          {riskList.length === 0 ? (
+            <View style={[shared.tableRow, { justifyContent: 'center' }]}>
+              <Text style={{ fontSize: 8, color: BRAND.muted }}>Tidak ada risiko High/Extreme</Text>
+            </View>
+          ) : riskList.map((r, i) => (
+            <View key={r.risk_code} style={[shared.tableRow, i % 2 === 1 ? shared.tableRowAlt : {}]} wrap={false}>
+              <Text style={[shared.monoText, { width: colW.code }]}>{r.risk_code}</Text>
+              <View style={{ width: colW.title }}>
+                <Text style={[shared.tableCell, { fontFamily: 'Helvetica-Bold' }]}>{r.title}</Text>
+                <Text style={shared.tableCellMuted}>{r.category} · {(r as any).unit_kerja?.nama ?? '—'}</Text>
+                {r.existing_control && (
+                  <Text style={[shared.tableCellMuted, { marginTop: 2 }]}>Kontrol: {r.existing_control}</Text>
+                )}
+              </View>
+              <View style={{ width: colW.inherent, alignItems: 'center' }}>
+                <ClassBadge value={r.inherent_classification} />
+                <Text style={[shared.tableCellMuted, { marginTop: 2 }]}>{r.inherent_score} (L{r.likelihood}×I{r.impact})</Text>
+              </View>
+              <View style={{ width: colW.residual, alignItems: 'center' }}>
+                {r.residual_classification
+                  ? <ClassBadge value={r.residual_classification} />
+                  : <Text style={{ fontSize: 8, color: BRAND.muted }}>—</Text>}
+                {r.residual_score > 0 && (
+                  <Text style={[shared.tableCellMuted, { marginTop: 2 }]}>{r.residual_score}</Text>
+                )}
+              </View>
+              <View style={{ width: colW.treatment }}>
+                <Text style={shared.tableCell}>{r.treatment_strategy ?? '—'}</Text>
+                {r.treatment_notes && (
+                  <Text style={shared.tableCellMuted}>{r.treatment_notes}</Text>
+                )}
+              </View>
+              <Text style={[shared.tableCell, { width: colW.owner }]}>{(r as any).risk_owner?.full_name ?? '—'}</Text>
+              <Text style={[shared.tableCell, {
+                width: colW.review,
+                color: new Date(r.next_review_date ?? '').getTime() < Date.now() ? BRAND.red : BRAND.muted,
+              }]}>
+                {formatDate(r.next_review_date)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </Page>
+    </Document>
+  )
+
+  const buffer = await renderToBuffer(doc)
+  const filename = `AVIRA_HighExtremeRisk_${new Date().toISOString().slice(0, 10)}.pdf`
+
+  return new NextResponse(buffer, {
+    headers: {
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
   })
 }

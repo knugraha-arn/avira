@@ -1,6 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { formatDate, formatTimestamp } from '@/lib/utils'
+import { renderToBuffer } from '@react-pdf/renderer'
+import React from 'react'
+import { Document, Page, View, Text } from '@react-pdf/renderer'
+import {
+  shared, BRAND,
+  PdfPageHeader, PdfPageFooter,
+  ClassBadge,
+} from '@/lib/pdf/template'
 
 export const runtime = 'nodejs'
 
@@ -14,7 +22,9 @@ export async function GET() {
 
   const [{ data: risks }, { data: summary }, { data: overdue }] = await Promise.all([
     supabase.from('avr_risks')
-      .select(`risk_code, title, inherent_classification, inherent_score, status, treatment_strategy, mrm_reason, next_review_date, risk_owner:avr_user_profiles!avr_risks_risk_owner_id_fkey(full_name), unit_kerja:avr_unit_kerja(nama)`)
+      .select(`risk_code, title, inherent_classification, inherent_score, status, treatment_strategy, mrm_reason, next_review_date,
+        risk_owner:avr_user_profiles!avr_risks_risk_owner_id_fkey(full_name),
+        unit_kerja:avr_unit_kerja(nama)`)
       .eq('is_mrm_flagged', true).neq('status', 'Closed')
       .order('inherent_score', { ascending: false }),
     supabase.from('avr_v_dashboard_summary').select('*').single(),
@@ -22,134 +32,120 @@ export async function GET() {
   ])
 
   const now = formatTimestamp(new Date())
-
-  const classBg: Record<string, string> = { Low: '#D6EFC7', Medium: '#FFF0C2', High: '#FFE0A0', Extreme: '#FFCCCC' }
-  const classColor: Record<string, string> = { Low: '#1E5C0A', Medium: '#7A4C00', High: '#6B3500', Extreme: '#CC0000' }
-
-  const riskRows = (risks ?? []).map(r => {
-    const cls = r.inherent_classification ?? 'Low'
-    return `
-    <tr>
-      <td style="font-family:monospace;font-size:11px;color:#0344D8">${r.risk_code}</td>
-      <td>
-        <div style="font-weight:500;font-size:12px">${r.title}</div>
-        <div style="color:#888;font-size:10px;margin-top:2px">${(r as any).unit_kerja?.nama ?? '—'}</div>
-      </td>
-      <td style="text-align:center">
-        <span style="background:${classBg[cls]};color:${classColor[cls]};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500">${cls} (${r.inherent_score})</span>
-      </td>
-      <td style="font-size:11px">${(r as any).risk_owner?.full_name ?? '—'}</td>
-      <td style="font-size:11px">${r.treatment_strategy ?? '—'}</td>
-      <td style="font-size:11px;color:#888">${r.mrm_reason ?? '—'}</td>
-    </tr>`
-  }).join('')
-
-  const overdueRows = (overdue ?? []).map(o => `
-    <tr>
-      <td style="font-family:monospace;font-size:11px;color:#0344D8">${o.risk_code}</td>
-      <td style="font-size:12px">${o.risk_title}</td>
-      <td style="font-size:11px">${o.risk_owner_name}</td>
-      <td style="font-size:11px;color:#CC0000;font-weight:500">+${o.days_overdue} hari</td>
-      <td>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="flex:1;height:6px;background:#E5E7EB;border-radius:3px;overflow:hidden">
-            <div style="width:${o.progress_percentage}%;height:100%;background:#0344D8;border-radius:3px"></div>
-          </div>
-          <span style="font-size:10px;color:#888">${o.progress_percentage}%</span>
-        </div>
-      </td>
-    </tr>`
-  ).join('')
-
+  const riskList = risks ?? []
+  const overdueList = overdue ?? []
   const s = summary as any
 
-  const html = `<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; color: #1A1F2E; background: white; padding: 32px; }
-  .header { border-bottom: 2px solid #0344D8; padding-bottom: 16px; margin-bottom: 24px; }
-  .brand { font-size: 22px; font-weight: 700; color: #0344D8; }
-  .report-title { font-size: 16px; font-weight: 600; margin-top: 4px; }
-  .meta { font-size: 11px; color: #888; margin-top: 4px; }
-  .badge { background: #D1EA2C; color: #1A1F2E; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
-  .section-title { font-size: 13px; font-weight: 600; color: #1A1F2E; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 1px solid #E5E7EB; }
-  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 8px; }
-  .kpi { background: #F8F9FB; border-radius: 8px; padding: 12px 16px; }
-  .kpi-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
-  .kpi-value { font-size: 28px; font-weight: 700; margin-top: 2px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { background: #F8F9FB; color: #888; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 10px; text-align: left; border-bottom: 1px solid #E5E7EB; }
-  td { padding: 10px 10px; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }
-  .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #E5E7EB; font-size: 10px; color: #aaa; display: flex; justify-content: space-between; }
-  @media print { body { padding: 16px; } }
-</style>
-</head>
-<body>
+  const colW1 = { code: '9%', title: '28%', cls: '13%', owner: '15%', treatment: '22%', reason: '13%' }
+  const colW2 = { code: '9%', title: '32%', owner: '18%', late: '12%', progress: '29%' }
 
-<div class="header" style="display:flex;justify-content:space-between;align-items:flex-start">
-  <div>
-    <div class="brand">AVIRA</div>
-    <div class="report-title">Management Review Meeting — Risk Summary</div>
-    <div class="meta">Digenerate: ${now} · Oleh: ${profile?.full_name ?? '—'}</div>
-  </div>
-  <span class="badge">ISO 27001 Kl. 9.3 · ISO 9001 Kl. 9.3</span>
-</div>
+  const doc = (
+    <Document title="MRM Risk Summary Report" author={profile?.full_name ?? 'AVIRA'}>
+      <Page size="A4" orientation="landscape" style={shared.page}>
+        <PdfPageHeader />
+        <PdfPageFooter />
 
-<div class="section-title">1. Ringkasan Status Risiko</div>
-<div class="kpi-grid">
-  <div class="kpi">
-    <div class="kpi-label">Total Risiko Aktif</div>
-    <div class="kpi-value">${s?.total_open ?? 0}</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Extreme</div>
-    <div class="kpi-value" style="color:#CC0000">${s?.total_extreme ?? 0}</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">High</div>
-    <div class="kpi-value" style="color:#7A4C00">${s?.total_high ?? 0}</div>
-  </div>
-  <div class="kpi">
-    <div class="kpi-label">Mitigasi Terlambat</div>
-    <div class="kpi-value" style="color:#CC0000">${overdue?.length ?? 0}</div>
-  </div>
-</div>
+        <View style={shared.reportHeaderBox}>
+          <View>
+            <Text style={shared.reportTitle}>Management Review Meeting — Risk Summary</Text>
+            <Text style={shared.reportMeta}>Digenerate: {now} · Oleh: {profile?.full_name ?? '—'}</Text>
+          </View>
+          <Text style={shared.complianceBadge}>ISO 27001 Kl. 9.3 · ISO 9001 Kl. 9.3</Text>
+        </View>
 
-<div class="section-title">2. Risiko untuk Dibahas di MRM (${risks?.length ?? 0} risiko)</div>
-<table>
-  <thead>
-    <tr>
-      <th>Kode</th><th>Judul Risiko</th><th>Klasifikasi</th>
-      <th>Risk Owner</th><th>Treatment</th><th>Alasan MRM</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${riskRows || '<tr><td colspan="6" style="text-align:center;color:#ccc;padding:24px">Tidak ada risiko MRM</td></tr>'}
-  </tbody>
-</table>
+        {/* KPI */}
+        <Text style={shared.sectionTitle}>1. Ringkasan Status Risiko</Text>
+        <View style={shared.kpiRow}>
+          <View style={shared.kpiCard}>
+            <Text style={shared.kpiLabel}>Total Risiko Aktif</Text>
+            <Text style={shared.kpiValue}>{s?.total_open ?? 0}</Text>
+          </View>
+          <View style={shared.kpiCard}>
+            <Text style={shared.kpiLabel}>Extreme</Text>
+            <Text style={[shared.kpiValue, { color: BRAND.red }]}>{s?.total_extreme ?? 0}</Text>
+          </View>
+          <View style={shared.kpiCard}>
+            <Text style={shared.kpiLabel}>High</Text>
+            <Text style={[shared.kpiValue, { color: '#7A4C00' }]}>{s?.total_high ?? 0}</Text>
+          </View>
+          <View style={shared.kpiCard}>
+            <Text style={shared.kpiLabel}>Mitigasi Terlambat</Text>
+            <Text style={[shared.kpiValue, { color: BRAND.red }]}>{overdueList.length}</Text>
+          </View>
+          <View style={shared.kpiCard}>
+            <Text style={shared.kpiLabel}>Risiko MRM</Text>
+            <Text style={shared.kpiValue}>{riskList.length}</Text>
+          </View>
+        </View>
 
-${overdue && overdue.length > 0 ? `
-<div class="section-title">3. Mitigasi Terlambat (${overdue.length} item)</div>
-<table>
-  <thead>
-    <tr><th>Kode</th><th>Risiko</th><th>Risk Owner</th><th>Keterlambatan</th><th>Progress</th></tr>
-  </thead>
-  <tbody>${overdueRows}</tbody>
-</table>` : ''}
+        {/* Tabel risiko MRM */}
+        <Text style={shared.sectionTitle}>2. Risiko untuk Dibahas di MRM ({riskList.length} risiko)</Text>
+        <View style={shared.table}>
+          <View style={shared.tableHeader}>
+            <Text style={[shared.tableHeaderCell, { width: colW1.code }]}>Kode</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW1.title }]}>Judul Risiko</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW1.cls }]}>Klasifikasi</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW1.owner }]}>Risk Owner</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW1.treatment }]}>Treatment</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW1.reason }]}>Alasan MRM</Text>
+          </View>
+          {riskList.length === 0 ? (
+            <View style={[shared.tableRow, { justifyContent: 'center' }]}>
+              <Text style={{ fontSize: 8, color: BRAND.muted }}>Tidak ada risiko MRM</Text>
+            </View>
+          ) : riskList.map((r, i) => (
+            <View key={r.risk_code} style={[shared.tableRow, i % 2 === 1 ? shared.tableRowAlt : {}]} wrap={false}>
+              <Text style={[shared.monoText, { width: colW1.code }]}>{r.risk_code}</Text>
+              <View style={{ width: colW1.title }}>
+                <Text style={[shared.tableCell, { fontFamily: 'Helvetica-Bold' }]}>{r.title}</Text>
+                <Text style={shared.tableCellMuted}>{(r as any).unit_kerja?.nama ?? '—'}</Text>
+              </View>
+              <View style={{ width: colW1.cls }}>
+                <ClassBadge value={r.inherent_classification} />
+                <Text style={[shared.tableCellMuted, { marginTop: 2 }]}>{r.inherent_score}</Text>
+              </View>
+              <Text style={[shared.tableCell, { width: colW1.owner }]}>{(r as any).risk_owner?.full_name ?? '—'}</Text>
+              <Text style={[shared.tableCell, { width: colW1.treatment }]}>{r.treatment_strategy ?? '—'}</Text>
+              <Text style={[shared.tableCell, { width: colW1.reason, color: BRAND.muted }]}>{(r as any).mrm_reason ?? '—'}</Text>
+            </View>
+          ))}
+        </View>
 
-<div class="footer">
-  <span>AVIRA Risk Management · Arranet · Dokumen Rahasia</span>
-  <span>${now}</span>
-</div>
+        {/* Tabel overdue */}
+        {overdueList.length > 0 && (
+          <>
+            <Text style={shared.sectionTitle}>3. Mitigasi Terlambat ({overdueList.length} item)</Text>
+            <View style={shared.table}>
+              <View style={shared.tableHeader}>
+                <Text style={[shared.tableHeaderCell, { width: colW2.code }]}>Kode</Text>
+                <Text style={[shared.tableHeaderCell, { width: colW2.title }]}>Risiko</Text>
+                <Text style={[shared.tableHeaderCell, { width: colW2.owner }]}>Risk Owner</Text>
+                <Text style={[shared.tableHeaderCell, { width: colW2.late }]}>Keterlambatan</Text>
+                <Text style={[shared.tableHeaderCell, { width: colW2.progress }]}>Progress</Text>
+              </View>
+              {overdueList.map((o: any, i: number) => (
+                <View key={o.risk_code + i} style={[shared.tableRow, i % 2 === 1 ? shared.tableRowAlt : {}]} wrap={false}>
+                  <Text style={[shared.monoText, { width: colW2.code }]}>{o.risk_code}</Text>
+                  <Text style={[shared.tableCell, { width: colW2.title }]}>{o.risk_title}</Text>
+                  <Text style={[shared.tableCell, { width: colW2.owner }]}>{o.risk_owner_name}</Text>
+                  <Text style={[shared.tableCell, { width: colW2.late, color: BRAND.red, fontFamily: 'Helvetica-Bold' }]}>+{o.days_overdue} hari</Text>
+                  <Text style={[shared.tableCell, { width: colW2.progress }]}>{o.progress_percentage}%</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+      </Page>
+    </Document>
+  )
 
-<script>window.onload = () => window.print()</script>
-</body>
-</html>`
+  const buffer = await renderToBuffer(doc)
+  const filename = `AVIRA_MRM_${new Date().toISOString().slice(0, 10)}.pdf`
 
-  return new NextResponse(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  return new NextResponse(buffer, {
+    headers: {
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
   })
 }

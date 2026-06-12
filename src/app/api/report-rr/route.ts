@@ -1,6 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { formatDate, formatTimestamp } from '@/lib/utils'
+import { renderToBuffer } from '@react-pdf/renderer'
+import React from 'react'
+import {
+  Document, Page, View, Text,
+} from '@react-pdf/renderer'
+import {
+  shared, BRAND,
+  PdfPageHeader, PdfPageFooter,
+  ClassBadge, StatusBadgePdf,
+} from '@/lib/pdf/template'
 
 export const runtime = 'nodejs'
 
@@ -26,146 +36,116 @@ export async function GET() {
     .neq('status', 'Closed')
     .order('inherent_score', { ascending: false })
 
-  // Timestamp lengkap untuk header/footer report
   const now = formatTimestamp(new Date())
+  const riskList = risks ?? []
 
-  const classColor: Record<string, string> = {
-    Low:     '#1E5C0A',
-    Medium:  '#7A4C00',
-    High:    '#6B3500',
-    Extreme: '#CC0000',
-  }
+  const colW = { code: '9%', title: '28%', inherent: '10%', residual: '10%', treatment: '17%', owner: '13%', status: '7%', review: '6%' }
 
-  const classBg: Record<string, string> = {
-    Low:     '#D6EFC7',
-    Medium:  '#FFF0C2',
-    High:    '#FFE0A0',
-    Extreme: '#FFCCCC',
-  }
+  const doc = (
+    <Document title="Risk Register Report" author={profile?.full_name ?? 'AVIRA'}>
+      <Page size="A4" orientation="landscape" style={shared.page}>
+        <PdfPageHeader />
+        <PdfPageFooter />
 
-  const rows = (risks ?? []).map(r => {
-    const cls = r.inherent_classification ?? 'Low'
-    const rcls = r.residual_classification
-    return `
-      <tr>
-        <td style="font-family:monospace;font-size:11px;color:#0344D8;white-space:nowrap">${r.risk_code}</td>
-        <td>
-          <div style="font-weight:500;font-size:12px">${r.title}</div>
-          <div style="color:#888;font-size:10px;margin-top:2px">${r.category} · ${(r as any).unit_kerja?.nama ?? '—'}</div>
-        </td>
-        <td style="text-align:center">
-          <span style="background:${classBg[cls]};color:${classColor[cls]};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500">
-            ${cls}
-          </span>
-          <div style="font-size:10px;color:#888;margin-top:2px">${r.inherent_score} (L${r.likelihood}×I${r.impact})</div>
-        </td>
-        <td style="text-align:center">
-          ${rcls ? `<span style="background:${classBg[rcls]};color:${classColor[rcls]};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500">${rcls}</span><div style="font-size:10px;color:#888;margin-top:2px">${r.residual_score}</div>` : '<span style="color:#ccc">—</span>'}
-        </td>
-        <td style="font-size:11px">${r.treatment_strategy ?? '—'}</td>
-        <td style="font-size:11px">${(r as any).risk_owner?.full_name ?? '—'}</td>
-        <td>
-          <span style="background:${r.status === 'Open' ? '#EBF2FF' : r.status === 'In Progress' ? '#FFF8E6' : '#F0F9E8'};
-            color:${r.status === 'Open' ? '#0344D8' : r.status === 'In Progress' ? '#7A4C00' : '#1E5C0A'};
-            padding:2px 8px;border-radius:4px;font-size:10px;font-weight:500">
-            ${r.status}
-          </span>
-        </td>
-        <td style="font-size:11px;color:#888">${formatDate(r.next_review_date)}</td>
-      </tr>
-    `
-  }).join('')
+        {/* Report header */}
+        <View style={shared.reportHeaderBox}>
+          <View>
+            <Text style={shared.reportTitle}>Risk Register Report</Text>
+            <Text style={shared.reportMeta}>Digenerate: {now} · Oleh: {profile?.full_name ?? '—'}</Text>
+          </View>
+          <Text style={shared.complianceBadge}>ISO 27001 Kl. 6.1 · ISO 9001 Kl. 6.1</Text>
+        </View>
 
-  const html = `<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; color: #1A1F2E; background: white; padding: 32px; }
-  .header { border-bottom: 2px solid #0344D8; padding-bottom: 16px; margin-bottom: 24px; }
-  .header-top { display: flex; justify-content: space-between; align-items: flex-start; }
-  .brand { font-size: 22px; font-weight: 700; color: #0344D8; letter-spacing: -0.5px; }
-  .report-title { font-size: 16px; font-weight: 600; color: #1A1F2E; margin-top: 4px; }
-  .meta { font-size: 11px; color: #888; margin-top: 4px; }
-  .badge { display: inline-block; background: #D1EA2C; color: #1A1F2E; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.05em; text-transform: uppercase; }
-  .summary { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
-  .summary-card { background: #F8F9FB; border-radius: 8px; padding: 12px 16px; min-width: 100px; }
-  .summary-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
-  .summary-value { font-size: 24px; font-weight: 700; color: #1A1F2E; margin-top: 2px; }
-  .summary-value.red { color: #CC0000; }
-  .summary-value.amber { color: #7A4C00; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { background: #F8F9FB; color: #888; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 10px; text-align: left; border-bottom: 1px solid #E5E7EB; }
-  td { padding: 10px 10px; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }
-  tr:last-child td { border-bottom: none; }
-  .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #E5E7EB; font-size: 10px; color: #aaa; display: flex; justify-content: space-between; }
-  @media print { body { padding: 16px; } }
-</style>
-</head>
-<body>
-<div class="header">
-  <div class="header-top">
-    <div>
-      <div class="brand">AVIRA</div>
-      <div class="report-title">Risk Register Report</div>
-      <div class="meta">Digenerate: ${now} · Oleh: ${profile?.full_name ?? '—'}</div>
-    </div>
-    <span class="badge">ISO 27001 · Kl. 6.1</span>
-  </div>
-</div>
+        {/* KPI Summary */}
+        <View style={shared.kpiRow}>
+          <View style={shared.kpiCard}>
+            <Text style={shared.kpiLabel}>Total Risiko</Text>
+            <Text style={shared.kpiValue}>{riskList.length}</Text>
+          </View>
+          <View style={[shared.kpiCard]}>
+            <Text style={shared.kpiLabel}>Extreme</Text>
+            <Text style={[shared.kpiValue, { color: BRAND.red }]}>
+              {riskList.filter(r => r.inherent_classification === 'Extreme').length}
+            </Text>
+          </View>
+          <View style={shared.kpiCard}>
+            <Text style={shared.kpiLabel}>High</Text>
+            <Text style={[shared.kpiValue, { color: '#7A4C00' }]}>
+              {riskList.filter(r => r.inherent_classification === 'High').length}
+            </Text>
+          </View>
+          <View style={shared.kpiCard}>
+            <Text style={shared.kpiLabel}>Medium</Text>
+            <Text style={shared.kpiValue}>
+              {riskList.filter(r => r.inherent_classification === 'Medium').length}
+            </Text>
+          </View>
+          <View style={shared.kpiCard}>
+            <Text style={shared.kpiLabel}>Low</Text>
+            <Text style={shared.kpiValue}>
+              {riskList.filter(r => r.inherent_classification === 'Low').length}
+            </Text>
+          </View>
+        </View>
 
-<div class="summary">
-  <div class="summary-card">
-    <div class="summary-label">Total Risiko</div>
-    <div class="summary-value">${risks?.length ?? 0}</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-label">Extreme</div>
-    <div class="summary-value red">${risks?.filter(r => r.inherent_classification === 'Extreme').length ?? 0}</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-label">High</div>
-    <div class="summary-value amber">${risks?.filter(r => r.inherent_classification === 'High').length ?? 0}</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-label">Medium</div>
-    <div class="summary-value">${risks?.filter(r => r.inherent_classification === 'Medium').length ?? 0}</div>
-  </div>
-  <div class="summary-card">
-    <div class="summary-label">Low</div>
-    <div class="summary-value">${risks?.filter(r => r.inherent_classification === 'Low').length ?? 0}</div>
-  </div>
-</div>
+        {/* Tabel */}
+        <View style={shared.table}>
+          <View style={shared.tableHeader}>
+            <Text style={[shared.tableHeaderCell, { width: colW.code }]}>Kode</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.title }]}>Judul Risiko</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.inherent, textAlign: 'center' }]}>Inherent</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.residual, textAlign: 'center' }]}>Residual</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.treatment }]}>Treatment</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.owner }]}>Risk Owner</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.status }]}>Status</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.review }]}>Review</Text>
+          </View>
 
-<table>
-  <thead>
-    <tr>
-      <th>Kode</th>
-      <th>Judul Risiko</th>
-      <th style="text-align:center">Inherent</th>
-      <th style="text-align:center">Residual</th>
-      <th>Treatment</th>
-      <th>Risk Owner</th>
-      <th>Status</th>
-      <th>Next Review</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${rows || '<tr><td colspan="8" style="text-align:center;color:#ccc;padding:24px">Tidak ada risiko aktif</td></tr>'}
-  </tbody>
-</table>
+          {riskList.length === 0 ? (
+            <View style={[shared.tableRow, { justifyContent: 'center' }]}>
+              <Text style={{ fontSize: 8, color: BRAND.muted }}>Tidak ada risiko aktif</Text>
+            </View>
+          ) : riskList.map((r, i) => (
+            <View key={r.risk_code} style={[shared.tableRow, i % 2 === 1 ? shared.tableRowAlt : {}]} wrap={false}>
+              <Text style={[shared.monoText, { width: colW.code }]}>{r.risk_code}</Text>
+              <View style={{ width: colW.title }}>
+                <Text style={[shared.tableCell, { fontFamily: 'Helvetica-Bold' }]}>{r.title}</Text>
+                <Text style={shared.tableCellMuted}>{r.category} · {(r as any).unit_kerja?.nama ?? '—'}</Text>
+              </View>
+              <View style={{ width: colW.inherent, alignItems: 'center' }}>
+                <ClassBadge value={r.inherent_classification} />
+                <Text style={[shared.tableCellMuted, { marginTop: 2 }]}>{r.inherent_score} (L{r.likelihood}×I{r.impact})</Text>
+              </View>
+              <View style={{ width: colW.residual, alignItems: 'center' }}>
+                {r.residual_score > 0 ? (
+                  <>
+                    <ClassBadge value={r.residual_classification} />
+                    <Text style={[shared.tableCellMuted, { marginTop: 2 }]}>{r.residual_score}</Text>
+                  </>
+                ) : <Text style={{ fontSize: 8, color: BRAND.muted }}>—</Text>}
+              </View>
+              <Text style={[shared.tableCell, { width: colW.treatment }]}>{r.treatment_strategy ?? '—'}</Text>
+              <Text style={[shared.tableCell, { width: colW.owner }]}>{(r as any).risk_owner?.full_name ?? '—'}</Text>
+              <View style={{ width: colW.status }}>
+                <StatusBadgePdf value={r.status} />
+              </View>
+              <Text style={[shared.tableCell, { width: colW.review, color: BRAND.muted }]}>
+                {formatDate(r.next_review_date)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </Page>
+    </Document>
+  )
 
-<div class="footer">
-  <span>AVIRA Risk Management · Arranet</span>
-  <span>Dokumen ini digenerate secara otomatis · ${now}</span>
-</div>
+  const buffer = await renderToBuffer(doc)
+  const filename = `AVIRA_RiskRegister_${new Date().toISOString().slice(0, 10)}.pdf`
 
-<script>window.onload = () => window.print()</script>
-</body>
-</html>`
-
-  return new NextResponse(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  return new NextResponse(buffer, {
+    headers: {
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
   })
 }

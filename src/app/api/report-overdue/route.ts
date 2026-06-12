@@ -1,6 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { formatDate, formatTimestamp } from '@/lib/utils'
+import { renderToBuffer } from '@react-pdf/renderer'
+import React from 'react'
+import { Document, Page, View, Text } from '@react-pdf/renderer'
+import {
+  shared, BRAND,
+  PdfPageHeader, PdfPageFooter,
+  ClassBadge,
+} from '@/lib/pdf/template'
 
 export const runtime = 'nodejs'
 
@@ -18,100 +26,90 @@ export async function GET() {
     .order('days_overdue', { ascending: false })
 
   const now = formatTimestamp(new Date())
+  const overdueList = overdue ?? []
 
-  const classBg: Record<string, string> = { Low: '#D6EFC7', Medium: '#FFF0C2', High: '#FFE0A0', Extreme: '#FFCCCC' }
-  const classColor: Record<string, string> = { Low: '#1E5C0A', Medium: '#7A4C00', High: '#6B3500', Extreme: '#CC0000' }
+  const colW = { code: '8%', title: '24%', cls: '10%', owner: '13%', target: '9%', late: '8%', progress: '12%', notes: '16%' }
 
-  const rows = (overdue ?? []).map(o => `
-    <tr>
-      <td style="font-family:monospace;font-size:11px;color:#0344D8;white-space:nowrap">${o.risk_code}</td>
-      <td>
-        <div style="font-weight:500;font-size:12px">${o.risk_title}</div>
-        <div style="color:#888;font-size:10px;margin-top:2px">${o.category ?? '—'}</div>
-      </td>
-      <td style="text-align:center">
-        <span style="background:${classBg[o.inherent_classification] ?? '#F0F0F0'};color:${classColor[o.inherent_classification] ?? '#666'};padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500">
-          ${o.inherent_classification}
-        </span>
-      </td>
-      <td style="font-size:11px">${o.risk_owner_name ?? '—'}</td>
-      <td style="font-size:11px;color:#888">${formatDate(o.target_completion_date)}</td>
-      <td style="font-size:12px;color:#CC0000;font-weight:600">+${o.days_overdue} hari</td>
-      <td>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="flex:1;height:6px;background:#E5E7EB;border-radius:3px;overflow:hidden;min-width:60px">
-            <div style="width:${o.progress_percentage}%;height:100%;background:#0344D8;border-radius:3px"></div>
-          </div>
-          <span style="font-size:11px;color:#888;white-space:nowrap">${o.progress_percentage}%</span>
-        </div>
-      </td>
-      <td style="font-size:11px;color:#666">${o.mitigation_notes ? o.mitigation_notes.substring(0, 80) + (o.mitigation_notes.length > 80 ? '...' : '') : '—'}</td>
-    </tr>
-  `).join('')
+  const doc = (
+    <Document title="Overdue Mitigation Report" author={profile?.full_name ?? 'AVIRA'}>
+      <Page size="A4" orientation="landscape" style={shared.page}>
+        <PdfPageHeader />
+        <PdfPageFooter />
 
-  const html = `<!DOCTYPE html>
-<html lang="id">
-<head>
-<meta charset="UTF-8">
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif; color: #1A1F2E; background: white; padding: 32px; }
-  .header { border-bottom: 2px solid #FFC128; padding-bottom: 16px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; }
-  .brand { font-size: 22px; font-weight: 700; color: #0344D8; }
-  .report-title { font-size: 16px; font-weight: 600; margin-top: 4px; }
-  .meta { font-size: 11px; color: #888; margin-top: 4px; }
-  .badge { background: #FFF0C2; color: #7A4C00; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
-  .alert-box { background: #FFFBF0; border: 1px solid #FFE0A0; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 12px; color: #7A4C00; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #F8F9FB; color: #888; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; padding: 8px 10px; text-align: left; border-bottom: 1px solid #E5E7EB; }
-  td { padding: 10px 10px; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }
-  .footer { margin-top: 32px; padding-top: 12px; border-top: 1px solid #E5E7EB; font-size: 10px; color: #aaa; display: flex; justify-content: space-between; }
-  @media print { body { padding: 16px; } }
-</style>
-</head>
-<body>
+        <View style={[shared.reportHeaderBox, { borderBottomColor: BRAND.amber }]}>
+          <View>
+            <Text style={shared.reportTitle}>Overdue Mitigation Report</Text>
+            <Text style={shared.reportMeta}>Digenerate: {now} · Oleh: {profile?.full_name ?? '—'}</Text>
+          </View>
+          <Text style={[shared.complianceBadge, { backgroundColor: '#FFF0C2', color: '#7A4C00' }]}>
+            ISO 27001 Kl. 9.1
+          </Text>
+        </View>
 
-<div class="header">
-  <div>
-    <div class="brand">AVIRA</div>
-    <div class="report-title">Overdue Mitigation Report</div>
-    <div class="meta">Digenerate: ${now} · Oleh: ${profile?.full_name ?? '—'}</div>
-  </div>
-  <span class="badge">ISO 27001 · Kl. 9.1</span>
-</div>
+        {/* Alert */}
+        <View style={[shared.alertBox, { backgroundColor: '#FFFBF0', borderColor: '#FFE0A0' }]}>
+          <Text style={[shared.alertText, { color: '#7A4C00' }]}>
+            ⚠  Terdapat {overdueList.length} mitigasi terlambat per {now}.
+            Mitigasi yang terlambat menunjukkan lemahnya pelaksanaan risk treatment dan perlu segera ditindaklanjuti.
+          </Text>
+        </View>
 
-<div class="alert-box">
-  ⚠️ Terdapat <strong>${overdue?.length ?? 0} mitigasi terlambat</strong> per ${now}.
-  Mitigasi yang terlambat menunjukkan lemahnya pelaksanaan risk treatment dan perlu segera ditindaklanjuti.
-</div>
+        {/* Tabel */}
+        <View style={shared.table}>
+          <View style={shared.tableHeader}>
+            <Text style={[shared.tableHeaderCell, { width: colW.code }]}>Kode</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.title }]}>Judul Risiko</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.cls }]}>Klasifikasi</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.owner }]}>Risk Owner</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.target }]}>Target Selesai</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.late }]}>Terlambat</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.progress }]}>Progress</Text>
+            <Text style={[shared.tableHeaderCell, { width: colW.notes }]}>Catatan Terakhir</Text>
+          </View>
 
-<table>
-  <thead>
-    <tr>
-      <th>Kode</th>
-      <th>Judul Risiko</th>
-      <th>Klasifikasi</th>
-      <th>Risk Owner</th>
-      <th>Target Selesai</th>
-      <th>Keterlambatan</th>
-      <th>Progress</th>
-      <th>Catatan Terakhir</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${rows || '<tr><td colspan="8" style="text-align:center;color:#ccc;padding:24px">Tidak ada mitigasi yang terlambat</td></tr>'}
-  </tbody>
-</table>
+          {overdueList.length === 0 ? (
+            <View style={[shared.tableRow, { justifyContent: 'center' }]}>
+              <Text style={{ fontSize: 8, color: BRAND.muted }}>Tidak ada mitigasi yang terlambat</Text>
+            </View>
+          ) : overdueList.map((o: any, i: number) => (
+            <View key={o.risk_code + i} style={[shared.tableRow, i % 2 === 1 ? shared.tableRowAlt : {}]} wrap={false}>
+              <Text style={[shared.monoText, { width: colW.code }]}>{o.risk_code}</Text>
+              <View style={{ width: colW.title }}>
+                <Text style={[shared.tableCell, { fontFamily: 'Helvetica-Bold' }]}>{o.risk_title}</Text>
+                <Text style={shared.tableCellMuted}>{o.category ?? '—'}</Text>
+              </View>
+              <View style={{ width: colW.cls }}>
+                <ClassBadge value={o.inherent_classification} />
+              </View>
+              <Text style={[shared.tableCell, { width: colW.owner }]}>{o.risk_owner_name ?? '—'}</Text>
+              <Text style={[shared.tableCell, { width: colW.target, color: BRAND.muted }]}>
+                {formatDate(o.target_completion_date)}
+              </Text>
+              <Text style={[shared.tableCell, { width: colW.late, color: BRAND.red, fontFamily: 'Helvetica-Bold' }]}>
+                +{o.days_overdue} hari
+              </Text>
+              <Text style={[shared.tableCell, { width: colW.progress }]}>
+                {o.progress_percentage}%
+              </Text>
+              <Text style={[shared.tableCell, { width: colW.notes, color: BRAND.muted }]}>
+                {o.mitigation_notes
+                  ? o.mitigation_notes.substring(0, 80) + (o.mitigation_notes.length > 80 ? '...' : '')
+                  : '—'}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </Page>
+    </Document>
+  )
 
-<div class="footer">
-  <span>AVIRA Risk Management · Arranet</span>
-  <span>${now}</span>
-</div>
-<script>window.onload = () => window.print()</script>
-</body>
-</html>`
+  const buffer = await renderToBuffer(doc)
+  const filename = `AVIRA_OverdueMitigation_${new Date().toISOString().slice(0, 10)}.pdf`
 
-  return new NextResponse(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  return new NextResponse(buffer, {
+    headers: {
+      'Content-Type':        'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
   })
 }
