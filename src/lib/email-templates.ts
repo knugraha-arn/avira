@@ -208,7 +208,7 @@ export const EMAIL_TEMPLATES: Record<EmailTemplate, {
       ${p('Berikut konfirmasi bahwa akses pengguna berikut telah dinonaktifkan dari sistem AVIRA:')}
       ${box(`<strong>Nama:</strong> ${deactivatedUserName}<br>
         <strong>Dinonaktifkan oleh:</strong> ${deactivatedByName}<br>
-        <strong>Waktu:</strong> ${new Date().toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' })}`,
+        <strong>Waktu:</strong> ${new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jakarta', hour12: false }).format(new Date()).replace(/\./g, ':').replace(/(\d{4})\s(\d)/, '$1, $2') + ' WIB'}`,
         '#F9FAFB', '#6B7280')}
       ${p('Pengguna tersebut tidak lagi dapat mengakses sistem AVIRA. Data historis tetap tersimpan untuk audit trail.')}
       ${btn('Kelola Pengguna', `${ARNES.appUrl}/users`)}

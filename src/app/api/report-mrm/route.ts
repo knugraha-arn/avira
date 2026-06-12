@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatTimestamp } from '@/lib/utils'
 
 export const runtime = 'nodejs'
 
@@ -21,7 +21,7 @@ export async function GET() {
     supabase.from('avr_v_overdue_mitigations').select('*'),
   ])
 
-  const now = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+  const now = formatTimestamp(new Date())
 
   const classBg: Record<string, string> = { Low: '#D6EFC7', Medium: '#FFF0C2', High: '#FFE0A0', Extreme: '#FFCCCC' }
   const classColor: Record<string, string> = { Low: '#1E5C0A', Medium: '#7A4C00', High: '#6B3500', Extreme: '#CC0000' }

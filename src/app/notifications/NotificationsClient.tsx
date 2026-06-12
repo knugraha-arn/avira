@@ -65,7 +65,12 @@ export function NotificationsClient({
     if (mins < 60)   return `${mins} menit lalu`
     if (hours < 24)  return `${hours} jam lalu`
     if (days < 7)    return `${days} hari lalu`
-    return new Date(dateStr).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+    // Lebih dari 7 hari — tampilkan timestamp lengkap
+    return new Intl.DateTimeFormat('id-ID', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      timeZone: 'Asia/Jakarta', hour12: false,
+    }).format(new Date(dateStr)).replace(/\./g, ':').replace(/(\d{4})\s(\d)/, '$1, $2') + ' WIB'
   }
 
   return (

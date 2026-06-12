@@ -8,7 +8,7 @@ import {
 import { RiskHeatmap } from '@/components/risk/RiskHeatmap'
 import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatTimestamp } from '@/lib/utils'
 import type {
   AvrDashboardSummary, AvrHeatmapCell,
   AvrOverdueMitigation, AvrRisk,
@@ -92,7 +92,7 @@ export default async function DashboardPage() {
                   <span className="text-[#7A4C00]/50">—</span>
                   <span>
                     {u.last_login_at
-                      ? `terakhir login ${formatDate(u.last_login_at)}`
+                      ? `terakhir login ${formatTimestamp(u.last_login_at)}`
                       : 'belum pernah login'}
                   </span>
                 </div>

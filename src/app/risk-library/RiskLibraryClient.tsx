@@ -10,7 +10,7 @@ import {
   CheckCircle, XCircle, Sparkles,
 } from 'lucide-react'
 import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatTimestamp } from '@/lib/utils'
 import type { AvrClassification } from '@/types'
 
 interface LibraryItem {
@@ -213,7 +213,7 @@ export function RiskLibraryClient({ initialItems, canWrite, currentUserId }: Pro
                         <span className="text-xs text-black/40 flex items-center gap-1">
                           <Sparkles size={10} /> {item.creator?.full_name ?? '—'}
                         </span>
-                        <span className="text-xs text-black/30">{formatDate(item.created_at)}</span>
+                        <span className="text-xs text-black/30">{formatTimestamp(item.created_at)}</span>
                         {item.ai_scope && (
                           <span className="text-xs text-black/30 bg-black/5 px-2 py-0.5 rounded">{item.ai_scope}</span>
                         )}
@@ -273,7 +273,7 @@ export function RiskLibraryClient({ initialItems, canWrite, currentUserId }: Pro
             {/* Meta */}
             <div className="text-xs text-black/40 space-y-1">
               <p><span className="font-medium">Digenerate oleh:</span> {selected.creator?.full_name ?? '—'}</p>
-              <p><span className="font-medium">Tanggal:</span> {formatDate(selected.created_at)}</p>
+              <p><span className="font-medium">Tanggal:</span> {formatTimestamp(selected.created_at)}</p>
               {selected.ai_scope && <p><span className="font-medium">Scope:</span> {selected.ai_scope}</p>}
               {selected.ai_fokus?.length ? <p><span className="font-medium">Fokus:</span> {selected.ai_fokus.join(', ')}</p> : null}
             </div>
@@ -354,7 +354,7 @@ export function RiskLibraryClient({ initialItems, canWrite, currentUserId }: Pro
               <div className="bg-risk-low rounded-lg p-3">
                 <p className="text-xs font-semibold text-risk-low-text uppercase tracking-wide mb-1">Sudah di Risk Register</p>
                 <p className="text-sm font-medium">{selected.risk.risk_code} — {selected.risk.title}</p>
-                <p className="text-xs text-black/40 mt-0.5">{formatDate(selected.used_at)}</p>
+                <p className="text-xs text-black/40 mt-0.5">{formatTimestamp(selected.used_at)}</p>
               </div>
             )}
 

@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatTimestamp } from '@/lib/utils'
 
 export const runtime = 'nodejs'
 
@@ -27,7 +27,7 @@ export async function GET() {
     .neq('status', 'Closed')
     .order('inherent_score', { ascending: false })
 
-  const now = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+  const now = formatTimestamp(new Date())
   const classBg: Record<string, string> = { High: '#FFE0A0', Extreme: '#FFCCCC' }
   const classColor: Record<string, string> = { High: '#6B3500', Extreme: '#CC0000' }
 

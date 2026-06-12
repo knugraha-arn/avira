@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { formatDate, formatTimestamp } from '@/lib/utils'
 
 export const runtime = 'nodejs'
 
@@ -16,7 +17,7 @@ export async function GET() {
     .select('*')
     .order('days_overdue', { ascending: false })
 
-  const now = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+  const now = formatTimestamp(new Date())
 
   const classBg: Record<string, string> = { Low: '#D6EFC7', Medium: '#FFF0C2', High: '#FFE0A0', Extreme: '#FFCCCC' }
   const classColor: Record<string, string> = { Low: '#1E5C0A', Medium: '#7A4C00', High: '#6B3500', Extreme: '#CC0000' }
@@ -34,7 +35,7 @@ export async function GET() {
         </span>
       </td>
       <td style="font-size:11px">${o.risk_owner_name ?? '—'}</td>
-      <td style="font-size:11px;color:#888">${o.target_completion_date ? new Date(o.target_completion_date).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</td>
+      <td style="font-size:11px;color:#888">${formatDate(o.target_completion_date)}</td>
       <td style="font-size:12px;color:#CC0000;font-weight:600">+${o.days_overdue} hari</td>
       <td>
         <div style="display:flex;align-items:center;gap:8px">

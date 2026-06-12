@@ -208,7 +208,7 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
                     <td><span className={`badge ${u.is_active ? 'bg-risk-low text-risk-low-text border-risk-low-text/20' : 'bg-black/5 text-black/40 border-black/10'}`}>{u.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
                     <td className={`text-xs ${inactive90 ? 'text-red-500 font-medium' : 'text-black/40'}`}>
                       {u.last_login_at
-                        ? <>{new Date(u.last_login_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}{inactive90 && <span className="block text-[10px]">⚠️ {'>'} 90 hari</span>}</>
+                        ? <>{new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jakarta', hour12: false }).format(new Date(u.last_login_at)).replace(/\./g, ':').replace(/(\d{4})\s(\d)/, '$1, $2') + ' WIB'}{inactive90 && <span className="block text-[10px]">⚠️ {'>'} 90 hari</span>}</>
                         : <span className="text-black/25">Belum pernah</span>}
                     </td>
                     <td>
@@ -249,7 +249,7 @@ export function UsersClient({ initialUsers, initialInvites, unitKerjaList, curre
                         : i.is_active ? <span className="flex items-center gap-1 text-xs text-brand-amber font-medium"><Clock size={11} /> Menunggu login</span>
                         : <span className="badge bg-black/5 text-black/40 border-black/10">Dibatalkan</span>}
                     </td>
-                    <td className="text-xs text-black/40">{new Date(i.invited_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}</td>
+                    <td className="text-xs text-black/40">{new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jakarta', hour12: false }).format(new Date(i.invited_at)).replace(/\./g, ':').replace(/(\d{4})\s(\d)/, '$1, $2') + ' WIB'}</td>
                     <td>{!i.accepted_at && i.is_active && <button onClick={() => cancelInvite(i)} className="btn-ghost py-1 px-2 text-xs gap-1 text-red-500"><X size={11} /> Batalkan</button>}</td>
                   </tr>
                 )

@@ -62,7 +62,7 @@ export default async function ClosurePage({ params }: Props) {
             <span className="badge bg-brand-lime/20 text-brand-navy border-brand-lime/40">Menunggu Approval</span>
           </div>
           <p className="text-sm text-black/60">
-            Request penutupan sudah diajukan pada {new Date(pendingClosure.requested_at).toLocaleDateString('id-ID')}.
+            Request penutupan sudah diajukan pada {new Date(pendingClosure.requested_at).toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'Asia/Jakarta' })} WIB.
             Menunggu persetujuan dari admin.
           </p>
           <Link href={`/risks/${id}`} className="btn-secondary mt-4 inline-flex">Kembali</Link>

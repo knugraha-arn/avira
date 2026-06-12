@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
 import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatTimestamp } from '@/lib/utils'
 import type { AvrClassification } from '@/types'
 
 interface Props {
@@ -83,7 +83,7 @@ export function ApproveClosureForm({ risk, closure, currentUserId, approverName 
           </div>
           <div>
             <p className="text-xs text-black/40 mb-0.5">Tanggal Pengajuan</p>
-            <p className="font-medium">{formatDate(closure.requested_at)}</p>
+            <p className="font-medium">{formatTimestamp(closure.requested_at)}</p>
           </div>
         </div>
         <div>
