@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatTimestamp } from '@/lib/utils'
 
 export const runtime = 'nodejs'
 
@@ -26,7 +26,8 @@ export async function GET() {
     .neq('status', 'Closed')
     .order('inherent_score', { ascending: false })
 
-  const now = new Date().toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
+  // Timestamp lengkap untuk header/footer report
+  const now = formatTimestamp(new Date())
 
   const classColor: Record<string, string> = {
     Low:     '#1E5C0A',
