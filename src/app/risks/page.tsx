@@ -31,6 +31,15 @@ export default async function RisksPage({ searchParams }: Props) {
 
   const isReviewFilter = params.filter === 'review_due'
 
+  // Untuk review filter: ambil semua risk_id yang pernah di-review
+  let reviewedRiskIds: string[] = []
+  if (isReviewFilter) {
+    const { data: reviewed } = await supabase
+      .from('avr_risk_reviews')
+      .select('risk_id')
+    reviewedRiskIds = [...new Set((reviewed ?? []).map((r: any) => r.risk_id))]
+  }
+
   let query = supabase
     .from('avr_risks')
     .select(`
@@ -41,12 +50,14 @@ export default async function RisksPage({ searchParams }: Props) {
     .neq('status', 'Closed')
     .order('created_at', { ascending: false })
 
-  // Review due filter
+  // Review filter: tampilkan risiko yang punya next_review_date ATAU pernah di-review
   if (isReviewFilter) {
-    const cutoff = new Date()
-    cutoff.setDate(cutoff.getDate() + 14)
-    query = query.lte('next_review_date', cutoff.toISOString().split('T')[0])
-    query = query.order('next_review_date', { ascending: true })
+    if (reviewedRiskIds.length > 0) {
+      query = query.or(`next_review_date.not.is.null,id.in.(${reviewedRiskIds.join(',')})`)
+    } else {
+      query = query.not('next_review_date', 'is', null)
+    }
+    query = query.order('next_review_date', { ascending: true, nullsFirst: false })
   }
 
   if (params.classification) {
@@ -74,7 +85,7 @@ export default async function RisksPage({ searchParams }: Props) {
           <h1 className="mt-1">{isReviewFilter ? 'Risiko Perlu Review' : 'Risk Register'}</h1>
           <p className="text-sm text-black/50 mt-0.5">
             {isReviewFilter
-              ? `${risks?.length ?? 0} risiko perlu di-review dalam 14 hari ke depan`
+              ? `${risks?.length ?? 0} risiko dengan jadwal review atau sudah pernah di-review`
               : `${risks?.length ?? 0} risiko ditemukan`}
           </p>
         </div>
@@ -104,7 +115,7 @@ export default async function RisksPage({ searchParams }: Props) {
         <div className="flex items-center gap-3 p-3 rounded-lg bg-brand-amber/10 border border-brand-amber/20">
           <Clock size={14} className="text-[#7A4C00] shrink-0" />
           <p className="text-xs text-[#7A4C00]">
-            Menampilkan risiko dengan jadwal review dalam 14 hari ke depan atau yang sudah overdue. Klik risiko untuk melakukan review.
+            Menampilkan risiko yang memiliki jadwal review (semua waktu) dan risiko yang sudah pernah di-review. Klik risiko untuk melakukan review.
           </p>
           <Link href="/risks" className="ml-auto text-xs text-brand-blue hover:underline whitespace-nowrap">
             Lihat semua →
@@ -125,7 +136,7 @@ export default async function RisksPage({ searchParams }: Props) {
               <th>Status</th>
               <th>Risk Owner</th>
               {isReviewFilter
-                ? <th>Sisa Hari Review</th>
+                ? <th>Jadwal Review</th>
                 : <th>Next Review</th>}
             </tr>
           </thead>
@@ -134,7 +145,7 @@ export default async function RisksPage({ searchParams }: Props) {
               <tr>
                 <td colSpan={8} className="text-center py-12 text-black/30">
                   {isReviewFilter
-                    ? 'Tidak ada risiko yang perlu di-review saat ini'
+                    ? 'Tidak ada risiko dengan jadwal review'
                     : 'Tidak ada risiko yang sesuai filter'}
                 </td>
               </tr>
@@ -171,11 +182,15 @@ export default async function RisksPage({ searchParams }: Props) {
                     {(risk as any).risk_owner?.full_name ?? '—'}
                   </td>
                   <td className="text-xs">
-                    {isReviewFilter && days !== null ? (
+                    {isReviewFilter ? (
                       <div className="flex items-center gap-1.5">
-                        <span className={`font-semibold ${days < 0 ? 'text-red-500' : days <= 7 ? 'text-[#7A4C00]' : 'text-black/60'}`}>
-                          {days < 0 ? `${Math.abs(days)}h overdue` : days === 0 ? 'Hari ini' : `${days} hari`}
-                        </span>
+                        {days !== null ? (
+                          <span className={`font-semibold ${days < 0 ? 'text-red-500' : days <= 7 ? 'text-[#7A4C00]' : 'text-black/60'}`}>
+                            {days < 0 ? `${Math.abs(days)}h overdue` : days === 0 ? 'Hari ini' : `${days} hari`}
+                          </span>
+                        ) : (
+                          <span className="text-black/25">—</span>
+                        )}
                         <Link href={`/risks/${risk.id}/review`}
                           className="text-[10px] px-2 py-0.5 rounded bg-brand-blue text-white hover:bg-brand-blue-hover transition-colors">
                           Review
