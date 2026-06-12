@@ -51,7 +51,7 @@ export default async function ReviewPage({ params }: Props) {
           <span className="font-mono text-brand-blue">{risk.risk_code}</span> · {risk.title}
         </p>
       </div>
-      <ReviewForm risk={risk} reviews={reviews ?? []} currentUserId={user.id} />
+      <ReviewForm risk={risk as any} reviews={reviews ?? []} currentUserId={user.id} />
     </div>
   )
 }
