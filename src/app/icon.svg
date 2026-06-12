@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0344D8"/>
+  <path d="M256 88 L388 144 L388 272 C388 342 330 396 256 424 C182 396 124 342 124 272 L124 144 Z" fill="#1A1F2E"/>
+  <text x="256" y="316" font-family="Inter,Arial,sans-serif" font-size="116" font-weight="700" fill="#D1EA2C" text-anchor="middle" letter-spacing="-2">AVR</text>
+</svg>
