@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatDate, LIKELIHOOD_LABELS, IMPACT_LABELS } from '@/lib/utils'
+import { formatDate, formatTimestamp, LIKELIHOOD_LABELS, IMPACT_LABELS } from '@/lib/utils'
 import { MitigationSection } from './MitigationSection'
 
 export const dynamic = 'force-dynamic'
@@ -117,7 +117,7 @@ export default async function RiskDetailPage({ params }: Props) {
           <div className="flex-1">
             <p className="text-sm font-medium text-brand-navy">Menunggu Approval Penutupan</p>
             <p className="text-xs text-black/50 mt-0.5">
-              Diajukan {formatDate(pendingClosure.requested_at)} · Approver: {(pendingClosure as any).approver?.full_name ?? '—'}
+              Diajukan {formatTimestamp(pendingClosure.requested_at)} · Approver: {(pendingClosure as any).approver?.full_name ?? '—'}
             </p>
           </div>
           {isAdmin && (
@@ -235,7 +235,7 @@ export default async function RiskDetailPage({ params }: Props) {
               <div key={r.id} className="flex gap-4 p-3 rounded-lg bg-brand-gray">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
-                    <span className="text-xs font-medium text-brand-navy">{formatDate(r.review_date)}</span>
+                    <span className="text-xs font-medium text-brand-navy">{formatTimestamp(r.review_date)}</span>
                     <span className="badge bg-blue-50 text-brand-blue border-brand-blue/20 text-[10px]">{r.review_decision}</span>
                     <span className="text-xs text-black/40">oleh {(r as any).reviewer?.full_name ?? '—'}</span>
                   </div>
@@ -266,7 +266,7 @@ export default async function RiskDetailPage({ params }: Props) {
                     <span className="text-xs font-medium">{log.action}</span>
                     <span className="text-xs text-black/40">oleh {(log as any).actor?.full_name ?? '—'}</span>
                   </div>
-                  <span className="text-xs text-black/30">{new Date(log.created_at).toLocaleString('id-ID')}</span>
+                  <span className="text-xs text-black/30">{formatTimestamp(log.created_at)}</span>
                 </div>
               </div>
             ))}
