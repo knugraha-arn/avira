@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Sparkles, ChevronRight, RotateCcw, HelpCircle,
-  Loader2, BookMarked, Check, Cpu,
+  Loader2, BookMarked, Check, Cpu, ShieldCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
@@ -21,12 +21,18 @@ const FOKUS_OPTIONS = [
   'Sumber Daya Manusia', 'Finansial', 'Reputasi', 'Teknologi',
 ]
 
+const STANDARD_OPTIONS: { key: string; label: string; desc: string }[] = [
+  { key: 'iso27001', label: 'ISO 27001', desc: 'Keamanan informasi' },
+  { key: 'iso9001',  label: 'ISO 9001',  desc: 'Mutu & proses' },
+  { key: 'pojk11',   label: 'POJK 11/2022', desc: 'TI Bank Umum (OJK)' },
+]
+
 const LOADING_STEPS = [
   { label: 'Menganalisis konteks',             pct: 20 },
   { label: 'Mengidentifikasi ancaman',          pct: 45 },
   { label: 'Menilai likelihood & dampak',       pct: 65 },
   { label: 'Menyusun pertanyaan reflektif',     pct: 82 },
-  { label: 'Memvalidasi terhadap ISO 27001',    pct: 95 },
+  { label: 'Memvalidasi terhadap standar',      pct: 95 },
 ]
 
 interface GeneratedRisk {
@@ -40,20 +46,10 @@ interface GeneratedRisk {
   klasifikasi: AvrClassification
   kontrol_yang_mungkin_ada: string
   treatment_saran: string
+  referensi_standar?: string
 }
 
 type Stage = 'input' | 'generating' | 'result' | 'saved'
-
-function resetState() {
-  return {
-    stage:    'input' as Stage,
-    risks:    [] as GeneratedRisk[],
-    selected: new Set<number>(),
-    deskripsi: '',
-    scope:    '',
-    fokus:    [] as string[],
-  }
-}
 
 export default function RiskGeneratorPage() {
   const router = useRouter()
@@ -62,6 +58,7 @@ export default function RiskGeneratorPage() {
   const [scope, setScope]         = useState('')
   const [deskripsi, setDeskripsi] = useState('')
   const [fokus, setFokus]         = useState<string[]>([])
+  const [standards, setStandards] = useState<string[]>(['iso27001'])
   const [risks, setRisks]         = useState<GeneratedRisk[]>([])
   const [selected, setSelected]   = useState<Set<number>>(new Set())
   const [progress, setProgress]   = useState(0)
@@ -83,6 +80,13 @@ export default function RiskGeneratorPage() {
     setFokus(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f])
   }
 
+  function toggleStandard(s: string) {
+    setStandards(prev => {
+      const next = prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+      return next
+    })
+  }
+
   function toggleSelect(i: number) {
     setSelected(prev => {
       const next = new Set(prev)
@@ -93,6 +97,7 @@ export default function RiskGeneratorPage() {
 
   async function handleGenerate() {
     if (!deskripsi.trim()) { toast.error('Deskripsikan konteks terlebih dahulu'); return }
+    if (standards.length === 0) { toast.error('Pilih minimal satu standar referensi'); return }
     setStage('generating')
     setProgress(0)
     setStepIdx(0)
@@ -112,7 +117,7 @@ export default function RiskGeneratorPage() {
       const res = await fetch('/api/risk-generator', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope, deskripsi, fokus }),
+        body: JSON.stringify({ scope, deskripsi, fokus, standards }),
       })
       clearInterval(interval)
       const data = await res.json()
@@ -146,6 +151,7 @@ export default function RiskGeneratorPage() {
         ai_scope:                 scope || null,
         ai_fokus:                 fokus.length > 0 ? fokus : null,
         ai_context:               deskripsi,
+        ai_standards:             standards,
         judul:                    r.judul,
         kategori:                 r.kategori,
         deskripsi:                r.deskripsi,
@@ -156,6 +162,7 @@ export default function RiskGeneratorPage() {
         klasifikasi:              r.klasifikasi,
         kontrol_yang_mungkin_ada: r.kontrol_yang_mungkin_ada,
         treatment_saran:          r.treatment_saran,
+        referensi_standar:        r.referensi_standar ?? null,
         status:                   'pending',
       }
     })
@@ -196,6 +203,35 @@ export default function RiskGeneratorPage() {
       {stage === 'input' && (
         <div className="space-y-4">
           <div className="card space-y-5">
+
+            {/* Standar Referensi — checkbox baru */}
+            <div>
+              <label className="label flex items-center gap-1.5">
+                <ShieldCheck size={13} className="text-brand-blue" />
+                Standar / Regulasi Referensi <span className="text-red-400">*</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {STANDARD_OPTIONS.map(opt => {
+                  const active = standards.includes(opt.key)
+                  return (
+                    <button key={opt.key} type="button" onClick={() => toggleStandard(opt.key)}
+                      className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border transition-colors ${active ? 'bg-brand-blue/8 border-brand-blue text-brand-navy' : 'bg-white text-black/50 border-black/10 hover:border-brand-blue/40'}`}>
+                      <span className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${active ? 'bg-brand-blue border-brand-blue' : 'border-black/20'}`}>
+                        {active && <Check size={10} className="text-white" strokeWidth={3} />}
+                      </span>
+                      <span>
+                        <span className="font-medium">{opt.label}</span>
+                        <span className="text-black/40"> · {opt.desc}</span>
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-black/30 mt-1.5">
+                Pilih satu atau lebih. Risiko akan dikaitkan ke klausul/bab spesifik dari standar yang dipilih.
+              </p>
+            </div>
+
             <div>
               <label className="label">Scope Identifikasi</label>
               <div className="flex flex-wrap gap-2">
@@ -232,11 +268,11 @@ export default function RiskGeneratorPage() {
           <div className="flex items-start gap-3 p-4 rounded-lg bg-blue-50 border border-brand-blue/15">
             <HelpCircle size={15} className="text-brand-blue shrink-0 mt-0.5" />
             <p className="text-xs text-brand-blue/80 leading-relaxed">
-              <strong>Cara kerja:</strong> AI menghasilkan 5 potensi risiko. Pilih yang relevan → simpan ke <strong>Risk Library</strong> → dari Library, proses satu per satu ke Risk Register dengan form lengkap.
+              <strong>Cara kerja:</strong> AI menghasilkan 5 potensi risiko berdasarkan standar yang dipilih. Pilih yang relevan → simpan ke <strong>Risk Library</strong> → dari Library, proses satu per satu ke Risk Register dengan form lengkap.
             </p>
           </div>
 
-          <button onClick={handleGenerate} disabled={deskripsi.trim().length < 20}
+          <button onClick={handleGenerate} disabled={deskripsi.trim().length < 20 || standards.length === 0}
             className="btn-primary px-6 py-2.5 gap-2 disabled:opacity-40">
             <Sparkles size={16} /> Identifikasi Risiko <ChevronRight size={15} />
           </button>
@@ -319,6 +355,12 @@ export default function RiskGeneratorPage() {
                     </div>
                     <p className="font-semibold text-brand-navy text-sm leading-snug">{risk.judul}</p>
                     <p className="text-xs text-black/50 mt-1 leading-relaxed">{risk.mengapa_relevan}</p>
+                    {risk.referensi_standar && (
+                      <div className="flex items-center gap-1 mt-2">
+                        <ShieldCheck size={11} className="text-brand-blue/60 shrink-0" />
+                        <span className="text-[11px] text-brand-blue/70 font-medium">{risk.referensi_standar}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
