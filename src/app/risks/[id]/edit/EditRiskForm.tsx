@@ -7,6 +7,8 @@ import { toast } from 'sonner'
 import { classificationBadge, LIKELIHOOD_LABELS, IMPACT_LABELS } from '@/lib/utils'
 import { RISK_FORM } from '@/lib/form-labels'
 import { Tooltip } from '@/components/ui/Tooltip'
+import { DocumentLinksField, type DocLink } from '@/components/ui/DocumentLinksField'
+import { ControlSelector, type ControlOption } from '@/components/ui/ControlSelector'
 import { Info } from 'lucide-react'
 import type { AvrClassification } from '@/types'
 
@@ -26,10 +28,12 @@ interface Props {
   unitKerjaList: { id: string; kode: string; nama: string }[]
   users: { id: string; full_name: string; job_title: string | null }[]
   thirdParties: { id: string; nama: string; tipe: string }[]
+  allControls: ControlOption[]
+  linkedControlIds: string[]
   currentUserId: string
 }
 
-export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, currentUserId }: Props) {
+export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, allControls, linkedControlIds, currentUserId }: Props) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
@@ -52,7 +56,9 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
     review_frequency_days: risk.review_frequency_days ?? 90,
     is_mrm_flagged:       risk.is_mrm_flagged ?? false,
     mrm_reason:           risk.mrm_reason ?? '',
+    related_documents:    (risk.related_documents ?? []) as DocLink[],
   })
+  const [selectedControlIds, setSelectedControlIds] = useState<string[]>(linkedControlIds)
 
   function set(field: string, value: unknown) { setForm(f => ({ ...f, [field]: value })) }
 
@@ -85,6 +91,7 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
       review_frequency_days: form.review_frequency_days,
       is_mrm_flagged:       form.is_mrm_flagged,
       mrm_reason:           form.mrm_reason || null,
+      related_documents:    form.related_documents.filter(d => d.nama.trim() || d.url.trim()),
     }
     if (form.residual_likelihood && form.residual_impact) {
       payload.residual_likelihood = form.residual_likelihood
@@ -96,6 +103,18 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
 
     const { error } = await supabase.from('avr_risks').update(payload).eq('id', risk.id)
     if (error) { toast.error('Gagal menyimpan', { description: error.message }); setLoading(false); return }
+
+    // Sync kontrol terhubung — hapus semua, insert ulang (simpel untuk jumlah kecil)
+    await supabase.from('avr_risk_controls').delete().eq('risk_id', risk.id)
+    if (selectedControlIds.length > 0) {
+      await supabase.from('avr_risk_controls').insert(
+        selectedControlIds.map(control_id => ({
+          risk_id: risk.id,
+          control_id,
+          linked_by: currentUserId,
+        }))
+      )
+    }
 
     // Kirim email eskalasi MRM kalau baru di-flag (sebelumnya false, sekarang true)
     if (form.is_mrm_flagged && !risk.is_mrm_flagged) {
@@ -150,19 +169,8 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
               {thirdParties.map(tp => <option key={tp.id} value={tp.id}>{tp.nama} ({tp.tipe})</option>)}
             </select>
           </Field>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Field label={RISK_FORM.date_identified.label}>
-              <input type="date" className="input" value={form.date_identified} onChange={e => set('date_identified', e.target.value)} />
-            </Field>
-          </div>
-          <Field label={RISK_FORM.existing_control.label} tooltip={RISK_FORM.existing_control.tooltip}>
-            <textarea className="input min-h-[90px] resize-y" placeholder={RISK_FORM.existing_control.placeholder} value={form.existing_control} onChange={e => set('existing_control', e.target.value)} />
-          </Field>
         </div>
-      </Section>
 
-      <Section step="Ownership (RACI)">
-        <InfoBox text={RISK_FORM.raci_note} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
           <Field label={RISK_FORM.risk_owner.label} tooltip={RISK_FORM.risk_owner.tooltip}>
             <select className="input" value={form.risk_owner_id} onChange={e => set('risk_owner_id', e.target.value)}>
@@ -235,6 +243,29 @@ export function EditRiskForm({ risk, unitKerjaList, users, thirdParties, current
             <span className={`badge ${classificationBadge(residualClass).bg} ${classificationBadge(residualClass).text} ${classificationBadge(residualClass).border}`}>{residualClass}</span>
           </div>
         )}
+      </Section>
+
+      <Section step="Kontrol & Dokumen Pendukung">
+        <div className="space-y-5">
+          <Field label="Kontrol dari Control Library" tooltip="Pilih kontrol yang sudah terdaftar di Control Library. Satu kontrol bisa dipasang ke banyak risiko — kalau status kontrol berubah, semua risiko terkait ikut ter-flag.">
+            <ControlSelector
+              allControls={allControls}
+              selectedIds={selectedControlIds}
+              onChange={setSelectedControlIds}
+            />
+          </Field>
+
+          <Field label={RISK_FORM.existing_control?.label ?? 'Kontrol Lain (Catatan Bebas)'} tooltip="Untuk kontrol yang belum terdaftar di Control Library, atau catatan tambahan yang tidak perlu jadi entity terpisah.">
+            <textarea className="input min-h-[70px] resize-y" value={form.existing_control} onChange={e => set('existing_control', e.target.value)} />
+          </Field>
+
+          <Field label="Dokumen Terkait" tooltip="Link ke SOP, kebijakan, atau bukti lain di platform dokumen Anda (Google Drive, SharePoint, dll). Bukan upload file.">
+            <DocumentLinksField
+              value={form.related_documents}
+              onChange={links => set('related_documents', links)}
+            />
+          </Field>
+        </div>
       </Section>
 
       <Section step="Risk Treatment">
