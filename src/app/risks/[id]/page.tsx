@@ -10,6 +10,7 @@ import { ClassificationBadge } from '@/components/ui/ClassificationBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDate, formatTimestamp, LIKELIHOOD_LABELS, IMPACT_LABELS } from '@/lib/utils'
 import { MitigationSection } from './MitigationSection'
+import { IncidentSection } from './IncidentSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +40,7 @@ export default async function RiskDetailPage({ params }: Props) {
     { data: auditLogs },
     { data: profile },
     { data: pendingClosure },
+    { data: incidents },
   ] = await Promise.all([
     supabase.from('avr_mitigation_logs')
       .select('*, updater:avr_user_profiles(full_name)')
@@ -53,6 +55,9 @@ export default async function RiskDetailPage({ params }: Props) {
     supabase.from('avr_risk_closures')
       .select('id, status, approver:avr_user_profiles!avr_risk_closures_approver_id_fkey(full_name), requested_at')
       .eq('risk_id', id).eq('status', 'Pending').maybeSingle(),
+    supabase.from('avr_risk_incidents')
+      .select('*, reporter:avr_user_profiles(full_name)')
+      .eq('risk_id', id).order('incident_date', { ascending: false }),
   ])
 
   const canEdit    = ['admin','risk_manager'].includes(profile?.role ?? '')
@@ -214,6 +219,13 @@ export default async function RiskDetailPage({ params }: Props) {
       <MitigationSection
         riskId={id} riskStatus={risk.status}
         logs={mitigationLogs ?? []}
+        canEdit={canEdit} currentUserId={user.id}
+      />
+
+      {/* Insiden Terkait */}
+      <IncidentSection
+        riskId={id}
+        incidents={incidents ?? []}
         canEdit={canEdit} currentUserId={user.id}
       />
 
