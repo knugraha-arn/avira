@@ -5,7 +5,7 @@ import { usePathname, useSearchParams, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, ShieldAlert, ClipboardList,
   Bell, Users, LogOut, ShieldCheck, Building2,
-  Handshake, Sparkles, FileText, BookMarked,
+  Handshake, Sparkles, FileText, BookMarked, ListChecks,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -16,6 +16,7 @@ const NAV = [
   { href: '/risk-generator',          label: 'Risk Generator', icon: Sparkles,        roles: ['admin'], highlight: true },
   { href: '/risk-library',            label: 'Risk Library',   icon: BookMarked,      roles: ['admin'] },
   { href: '/risks',                   label: 'Risk Register',  icon: ShieldAlert,     roles: ['admin','risk_manager','auditor','viewer'] },
+  { href: '/controls',                label: 'Control Library',icon: ListChecks,      roles: ['admin','risk_manager','auditor'] },
   { href: '/risks?filter=review_due', label: 'Review',         icon: ClipboardList,   roles: ['admin','risk_manager'] },
   { href: '/notifications',           label: 'Notifikasi',     icon: Bell,            roles: ['admin','risk_manager','auditor','viewer'] },
   { href: '/reports',                 label: 'Laporan',        icon: FileText,        roles: ['admin','risk_manager','auditor'] },
